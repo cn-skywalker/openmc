@@ -335,6 +335,7 @@ list(APPEND libopenmc_SOURCES
   src/chain.cpp
   src/cmfd_solver.cpp
   src/cross_sections.cpp
+  src/chord_length_stats.cpp
   src/dagmc.cpp
   src/distribution.cpp
   src/distribution_angle.cpp
