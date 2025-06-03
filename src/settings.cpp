@@ -11,6 +11,7 @@
 #endif
 
 #include "openmc/capi.h"
+#include "openmc/chord_length_stats.h"
 #include "openmc/constants.h"
 #include "openmc/container_util.h"
 #include "openmc/distribution.h"
@@ -1026,6 +1027,11 @@ void read_settings_xml(pugi::xml_node root)
   // Get volume calculations
   for (pugi::xml_node node_vol : root.children("volume_calc")) {
     model::volume_calcs.emplace_back(node_vol);
+  }
+
+  // Get chord length statistics
+  for (pugi::xml_node node_cls : root.children("chord_length_stats")) {
+    model::chordl_stats.emplace_back(node_cls);
   }
 
   // Get temperature settings
