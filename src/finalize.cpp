@@ -2,6 +2,7 @@
 
 #include "openmc/bank.h"
 #include "openmc/capi.h"
+#include "openmc/chord_length_stats.h"
 #include "openmc/cmfd_solver.h"
 #include "openmc/constants.h"
 #include "openmc/cross_sections.h"
@@ -38,6 +39,7 @@ void free_memory()
   free_memory_surfaces();
   free_memory_material();
   free_memory_volume();
+  free_memory_chordl();
   free_memory_simulation();
   free_memory_photon();
   free_memory_settings();
