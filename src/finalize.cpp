@@ -38,7 +38,6 @@ void free_memory()
   free_memory_surfaces();
   free_memory_material();
   free_memory_volume();
-  free_memory_ChordL();
   free_memory_simulation();
   free_memory_photon();
   free_memory_settings();
