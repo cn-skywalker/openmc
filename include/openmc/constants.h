@@ -347,7 +347,8 @@ enum class RunMode {
   EIGENVALUE,
   PLOTTING,
   PARTICLE,
-  VOLUME
+  VOLUME ,
+  CHORD_LENGTH
 };
 
 enum class SolverType { MONTE_CARLO, RANDOM_RAY };
