@@ -46,125 +46,228 @@ ChordLengthStats::ChordLengthStats(pugi::xml_node node)
   }
 
   // Read domain IDs and number of samples
-  matrix_domain_ids_ = get_node_array<int>(node, "matrix_domain_ids");
-  stochastic_media_domain_ids_ =
-    get_node_array<int>(node, "stochastic_media_domain_ids");
+  matrix_domain_id_ = std::stoull(get_node_value(node, "matrix_domain_id"));
+  stochastic_media_domain_id_ =
+    std::stoull(get_node_value(node, "stochastic_media_domain_id"));
   n_samples_ = std::stoull(get_node_value(node, "samples"));
-  tally_bins = get_node_array<double>(node, "tally_bins");
-
-  // Ensure that the matrix material and the stochastic media region
-  // correspond to each other and that they are not identical
-  if (matrix_domain_ids_.size() != stochastic_media_domain_ids_.size()) {
-    throw std::runtime_error(
-      "Matrix domain IDs and stochastic media domain IDs must have the same "
-      "length.");
-  }
-  for (size_t i = 0; i < matrix_domain_ids_.size(); ++i) {
-    if (matrix_domain_ids_[i] == stochastic_media_domain_ids_[i]) {
-      throw std::runtime_error(
-        fmt::format("Matrix domain ID {} and stochastic media domain ID "
-                    "{} cannot be the same.",
-          matrix_domain_ids_[i], stochastic_media_domain_ids_[i]));
-    }
-  }
-  // Ensure that the domain IDs are unique
-  std::unordered_set<int> unique_matrix_ids(
-    matrix_domain_ids_.cbegin(), matrix_domain_ids_.cend());
-  if (unique_matrix_ids.size() != matrix_domain_ids_.size()) {
-    throw std::runtime_error {"Matrix domain IDs for chord length statistics "
-                              "must be unique."};
-  }
-  std::unordered_set<int> unique_stochastic_ids(
-    stochastic_media_domain_ids_.cbegin(), stochastic_media_domain_ids_.cend());
-  if (unique_stochastic_ids.size() != stochastic_media_domain_ids_.size()) {
-    throw std::runtime_error {"Stochastic media domain IDs for chord length "
-                              "statistics must be unique."};
-  }
+  tally_bins_ = get_node_array<double>(node, "tally_bins");
+  lower_left_ = get_node_array<double>(node, "lower_left");
+  upper_right_ = get_node_array<double>(node, "upper_right");
 }
-vector<ChordLengthStats::Result> ChordLengthStats::execute() const
+ChordLengthStats::Result ChordLengthStats::execute() const
 {
   // Check to make sure domain IDs are valid
-  for (int id : matrix_domain_ids_) {
-    if (model::material_map.find(id) == model::material_map.end()) {
-      throw std::runtime_error {fmt::format(
-        "Matrix material {} in chord length statistics does not exist in "
-        "geometry.",
-        id)};
-    }
-  }
-  for (int id : stochastic_media_domain_ids_) {
-    if (model::material_map.find(id) == model::material_map.end()) {
-      throw std::runtime_error {fmt::format(
-        "Stochastic media material {} in chord length statistics does not "
-        "exist in geometry.",
-        id)};
-    }
+
+  if (model::material_map.find(matrix_domain_id_) ==
+      model::material_map.end()) {
+    throw std::runtime_error {fmt::format(
+      "Matrix material {} in chord length statistics does not exist in "
+      "geometry.",
+      matrix_domain_id_)};
   }
 
-  while (true) {
+  if (model::material_map.find(stochastic_media_domain_id_) ==
+      model::material_map.end()) {
+    throw std::runtime_error {fmt::format(
+      "Stochastic media material {} in chord length statistics does not "
+      "exist in geometry.",
+      stochastic_media_domain_id_)};
+  }
+
+  // Initialize the result structure
+  Result result;
+  result.chord_length.resize(tally_bins_.size() - 1);
+  for (auto& chord : result.chord_length) {
+    chord = {0.0}; //  Initialize frequency
+  }
+
+  // Create a local result for each thread to avoid race conditions
+  std::vector<std::vector<double>> local_results(
+    omp_get_max_threads(), std::vector<double>(tally_bins_.size() - 1, 0.0));
+// Parallelize the particle loop
+#pragma omp parallel for
+  for (int64_t i = 0; i < n_samples_; ++i) {
+    // Get the thread ID for local result access
+    int thread_id = omp_get_thread_num();
+    //  Generate a particle with random position and direction, initialize
+    //  current chord length to 0
+    // Initialize a particle with a unique ID
     Particle p;
-    // Initialize particle with a random position and direction
-    int64_t id = p.id();
-    uint64_t seed = init_seed(id, STREAM_VOLUME);
-    p.n_coord() = 1;
+    p.id() = i; // Set particle ID
+    uint64_t seed = init_seed(i, STREAM_VOLUME);
+    bool if_first = true;
     Position xi {prn(&seed), prn(&seed), prn(&seed)};
     p.r() = lower_left_ + xi * (upper_right_ - lower_left_);
-    p.u() = {prn(&seed), prn(&seed), prn(&seed)};
+    // Generate a random isotropic direction and set it to p.u()
+    double theta = 2.0 * M_PI * prn(&seed); // Random azimuthal angle [0, 2π)
+    double phi = std::acos(2.0 * prn(&seed) - 1.0); // Random polar angle [0, π]
 
-    // Initialization result for chord length statistics
-    Result result;
-    result.chord_length.resize(tally_bins.size());
-    for (auto& chord : result.chord_length) {
-      chord = {0.0, 0.0}; // Initialize mean and std deviation
-    }
+    // Convert spherical coordinates to Cartesian coordinates
+    p.u() = {std::sin(phi) * std::cos(theta), std::sin(phi) * std::sin(theta),
+      std::cos(phi)};
 
+    p.r_born() = p.r();            // Set the initial position of the particle
+    double total_chord_length = 0; // Initialize total chord length
+
+    // If the particle is not within the geometry, skip it
     if (!exhaustive_find_cell(p))
       continue;
-    double total_chord_length = 0.0;
+
     while (p.alive()) {
+      //  Find the position  of the next face along the initial flight direction
+      //  and pass through it, and determine whether it exceeds the boundary of
+      //  the area.
       p.boundary() = distance_to_boundary(p);
       double distance = p.boundary().distance;
 
-      // Advance particle in space
-      // Short-term solution until the surface source is revised and we can use
-      // this->move_distance(distance)
+      //  Move the particle to the next position
       for (int j = 0; j < p.n_coord(); ++j) {
         p.coord(j).r += distance * p.coord(j).u;
       }
       p.event_cross_surface();
+      total_chord_length += distance;
 
-      if (p.material() == p.material_last()) {
-        total_chord_length += distance;
-      } else {
-        // If the material has changed, we need to record the chord length
-        // statistics for the chord length in matrix to stochastic media
-        if (p.material_last() != C_NONE) {
-          // Find the index of the matrix material
-          auto it = std::find(matrix_domain_ids_.begin(),
-            matrix_domain_ids_.end(), p.material_last());
-          if (it != matrix_domain_ids_.end()) {
-            size_t index = std::distance(matrix_domain_ids_.begin(), it);
-            // Update the chord length statistics for this domain
-            double chord_length = total_chord_length;
-            double mean = chord_length / n_samples_;
-            double variance =
-              chord_length * chord_length / n_samples_ - mean * mean;
-            result.chord_length[index][0] += mean;
-            result.chord_length[index][1] += variance;
-          }
-        }
-        // Reset the total chord length for the next material
-        total_chord_length = 0.0;
-      }
-
-      // If the particle is outside the bounding box, kill it
+      // Determine whether it exceeds the regional boundary
       if (p.r().x < lower_left_.x || p.r().y < lower_left_.y ||
           p.r().z < lower_left_.z || p.r().x > upper_right_.x ||
           p.r().y > upper_right_.y || p.r().z > upper_right_.z) {
-        p.wgt() = 0;
+        p.wgt() = 0; //  Kill the particle
+        break;       // Exit the current particle loop and regenerate particles.
+      }
+
+      if (model::material_map[stochastic_media_domain_id_] ==
+          p.material_last()) {
+        // Set if_first to false after the first material switch
+        if_first = false;
+      }
+
+      // Determine whether the material has been switched
+      if (p.material() != p.material_last()) {
+
+        // The material is switched, and it is determined whether it matches
+        // both the base material and the random medium material.
+
+        if (check_material_match(p.material(), p.material_last()) &&
+            !if_first) {
+          // If matched, use match_index.value() to obtain the index.
+          // Find the index of the tally bin for the current chord length
+          auto index = find_tally_bin_index(total_chord_length);
+
+          // Add the current chord length to the corresponding frequency
+          // statistics.
+          if (index.has_value()) {
+            size_t tally_index = index.value();
+            local_results[thread_id][tally_index] += 1;
+          }
+        }
+        // Clear current chord length
+        total_chord_length = 0.0;
       }
     }
-    // If the material is not changed, cumulative chord length
   }
+
+  // Combine results from all threads
+  for (const auto& local_result : local_results) {
+    for (size_t i = 0; i < result.chord_length.size(); ++i) {
+      result.chord_length[i] += local_result[i];
+    }
+  }
+  return result; // Return the result containing chord length statistics
+}
+
+// Determine if the current material ID and the previous material ID match both
+// the base material and the stochastic medium material
+bool ChordLengthStats::check_material_match(
+  int32_t index1, int32_t index2) const
+{
+  auto current_material_id {model::materials[index1]->id()};
+  auto last_material_id {model::materials[index2]->id()};
+
+  if (last_material_id == matrix_domain_id_ &&
+      current_material_id == stochastic_media_domain_id_) {
+    return true; // Return true if the current material ID matches the
+                 // stochastic media domain ID
+  }
+
+  return false; // If no match is found,return std::nullopt
+}
+
+std::optional<size_t> ChordLengthStats::find_tally_bin_index(
+  double total_chord_length) const
+{
+  if (tally_bins_.empty()) {
+    throw std::runtime_error("tally_bins_ is empty.");
+  }
+
+  // Find the interval index
+  for (size_t i = 0; i < tally_bins_.size() - 1; ++i) {
+    if (total_chord_length >= tally_bins_[i] &&
+        total_chord_length < tally_bins_[i + 1]) {
+      return i;
+    }
+  }
+
+  // If total_chord_length matches the last bin boundary
+  if (total_chord_length == tally_bins_.back()) {
+    return tally_bins_.size() - 2;
+  }
+
+  return std::nullopt; //  If no match is found,return std::nullopt
+}
+
+void ChordLengthStats::to_hdf5(
+  const std::string& filename, const Result& result) const
+{
+  //  Create an HDF5 file with write access
+  hid_t file_id = file_open(filename, 'w');
+
+  //  Write attributes to the HDF5 file
+  write_attribute(file_id, "filetype", "chord_length_stats");
+  write_attribute(file_id, "version", VERSION_VOLUME);
+  write_attribute(file_id, "openmc_version", VERSION);
+#ifdef GIT_SHA1
+  write_attribute(file_id, "git_sha1", GIT_SHA1);
+#endif
+
+  //  Write attribute with current date and time
+  write_attribute(file_id, "date_and_time", time_stamp());
+
+  //  Write basic metadata
+  write_attribute(file_id, "samples", n_samples_);
+  write_attribute(file_id, "lower_left", lower_left_);
+  write_attribute(file_id, "upper_right", upper_right_);
+
+  //  Write attribute for domain type
+  if (domain_type_ == TallyDomain::MATERIAL) {
+    write_attribute(file_id, "domain_type", "material");
+  } else {
+    throw std::runtime_error(
+      "Unsupported domain type for chord length statistics.");
+  }
+  write_dataset(file_id, "tally_bins", tally_bins_);
+  //  Write results
+  write_dataset(file_id, "chord_length", result.chord_length);
+
+  //  Close the HDF5 file
+  file_close(file_id);
+}
+
+void free_memory_chordl()
+{
+  // Free memory for chord length statistics
+  model::chordl_stats.clear();
 }
 } // namespace openmc
+
+int openmc_chord_length_stats()
+{
+  using namespace openmc;
+  // Execute chord length statistics for each domain
+  for (auto& stats : openmc::model::chordl_stats) {
+    ChordLengthStats::Result result;
+    result = stats.execute();
+    // Write results to HDF5 file
+    stats.to_hdf5(settings::path_output + "chord_length_stats.h5", result);
+  }
+  return 0;
+}
