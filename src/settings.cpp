@@ -491,6 +491,8 @@ void read_settings_xml(pugi::xml_node root)
         run_mode = RunMode::PARTICLE;
       } else if (temp_str == "volume") {
         run_mode = RunMode::VOLUME;
+      } else if (temp_str == "chord length") {
+        run_mode = RunMode::CHORD_LENGTH;
       } else {
         fatal_error("Unrecognized run mode: " + temp_str);
       }

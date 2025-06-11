@@ -53,6 +53,9 @@ int main(int argc, char* argv[])
   case RunMode::VOLUME:
     err = openmc_calculate_volumes();
     break;
+  case RunMode::CHORD_LENGTH:
+    err = openmc_chord_length_stats();
+    break;
   default:
     break;
   }

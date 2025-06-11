@@ -254,7 +254,10 @@ int parse_command_line(int argc, char* argv[])
         settings::check_overlaps = true;
       } else if (arg == "-c" || arg == "--volume") {
         settings::run_mode = RunMode::VOLUME;
-      } else if (arg == "-s" || arg == "--threads") {
+      } else if (arg == "-l" || arg == "--chord-length"){
+        settings::run_mode = RunMode::CHORD_LENGTH;
+      }
+      else if (arg == "-s" || arg == "--threads") {
         // Read number of threads
         i += 1;
 
