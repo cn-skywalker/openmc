@@ -12,6 +12,7 @@ from openmc.material import *
 from openmc.plots import *
 from openmc.region import *
 from openmc.volume import *
+from openmc.chord_length import *
 from openmc.weight_windows import *
 from openmc.surface import *
 from openmc.universe import *
