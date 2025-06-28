@@ -16,6 +16,7 @@ from .mesh import _read_meshes, RegularMesh, MeshBase
 from .source import SourceBase, MeshSource, IndependentSource
 from .utility_funcs import input_path
 from .volume import VolumeCalculation
+from .chord_length import ChordLengthStats
 from .weight_windows import WeightWindows, WeightWindowGenerator
 
 
@@ -25,6 +26,7 @@ class RunMode(Enum):
     PLOT = 'plot'
     VOLUME = 'volume'
     PARTICLE_RESTART = 'particle restart'
+    CHORD_LENGTH = 'chord length'
 
 
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
@@ -309,6 +311,8 @@ class Settings:
         described in :ref:`verbosity`.
     volume_calculations : VolumeCalculation or iterable of VolumeCalculation
         Stochastic volume calculation specifications
+    chord_length_stats : ChordLengthStats or iterable of ChordLengthStats
+        Stochastic chord length statistics specifications
     weight_windows : WeightWindows or iterable of WeightWindows
         Weight windows to use for variance reduction
 
@@ -408,6 +412,9 @@ class Settings:
         self._resonance_scattering = {}
         self._volume_calculations = cv.CheckedList(
             VolumeCalculation, 'volume calculations')
+        self._chord_length_stats = cv.CheckedList(
+            ChordLengthStats, 'chord length statistics'
+        )
 
         self._create_fission_neutrons = None
         self._create_delayed_neutrons = None
@@ -1004,6 +1011,21 @@ class Settings:
             VolumeCalculation, 'stochastic volume calculations', vol_calcs)
 
     @property
+    def chord_length_stats(self) -> list[ChordLengthStats]:
+        return self._chord_length_stats
+    
+    @chord_length_stats.setter
+    def chord_length_stats(
+        self, chord_length_stats: ChordLengthStats | Iterable[ChordLengthStats]
+    ):
+        if not isinstance(chord_length_stats, MutableSequence):
+            chord_length_stats = [chord_length_stats]
+        self._chord_length_stats = cv.CheckedList(
+            ChordLengthStats, 'chord length statistics', chord_length_stats)
+
+
+
+    @property
     def create_fission_neutrons(self) -> bool:
         return self._create_fission_neutrons
 
@@ -1297,6 +1319,10 @@ class Settings:
     def _create_volume_calcs_subelement(self, root):
         for calc in self.volume_calculations:
             root.append(calc.to_xml_element())
+    
+    def _create_chord_length_stats_subelement(self, root):
+        for stats in self.chord_length_stats:
+            root.append(stats.to_xml_element())
 
     def _create_output_subelement(self, root):
         if self._output is not None:
@@ -2154,6 +2180,7 @@ class Settings:
         self._create_ufs_mesh_subelement(element, mesh_memo)
         self._create_resonance_scattering_subelement(element)
         self._create_volume_calcs_subelement(element)
+        self._create_chord_length_stats_subelement(element)
         self._create_create_fission_neutrons_subelement(element)
         self._create_create_delayed_neutrons_subelement(element)
         self._create_delayed_photon_scaling_subelement(element)
