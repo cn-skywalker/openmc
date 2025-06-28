@@ -386,7 +386,9 @@ bool read_model_xml()
       "No <materials> node present in the {} file.", model_filename));
   }
 
-  if (settings::run_mode != RunMode::PLOTTING) {
+  if (settings::run_mode != RunMode::PLOTTING &&
+      settings::run_mode != RunMode::CHORD_LENGTH) {
+    // Read cross sections from the model.xml file
     read_cross_sections_xml(root.child("materials"));
   }
   read_materials_xml(root.child("materials"));
@@ -429,7 +431,9 @@ bool read_model_xml()
 void read_separate_xml_files()
 {
   read_settings_xml();
-  if (settings::run_mode != RunMode::PLOTTING) {
+  if (settings::run_mode != RunMode::PLOTTING && 
+      settings::run_mode != RunMode::CHORD_LENGTH) {
+    // Read cross sections from the cross_sections.xml file
     read_cross_sections_xml();
   }
 
@@ -464,7 +468,11 @@ void initial_output()
     if (mpi::master && settings::verbosity >= 5)
       print_plot();
 
-  } else {
+  }
+  else if (settings::run_mode == RunMode::CHORD_LENGTH){
+    warning("Chord length statistics are on");
+  }
+  else {
     // Write summary information
     if (mpi::master && settings::output_summary)
       write_summary();
