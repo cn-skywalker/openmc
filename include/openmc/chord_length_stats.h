@@ -8,6 +8,7 @@
 
 #include "openmc/array.h"
 #include "openmc/openmp_interface.h"
+#include "openmc/particle.h"
 #include "openmc/position.h"
 #include "openmc/tallies/trigger.h"
 #include "openmc/vector.h"
@@ -51,6 +52,7 @@ public:
   //! \param[in] results Vector of results for each domain
   void to_hdf5(const std::string& filename, const Result& result) const;
   bool check_material_match(int32_t index1, int32_t index2) const;
+  bool check_hit_boundary(const Particle& p) const;
 
   //! \brief Determine the index of the interval in tally_bins_ where
   //! total_chord_length falls

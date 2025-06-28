@@ -128,9 +128,7 @@ ChordLengthStats::Result ChordLengthStats::execute() const
       total_chord_length += distance;
 
       // Determine whether it exceeds the regional boundary
-      if (p.r().x < lower_left_.x || p.r().y < lower_left_.y ||
-          p.r().z < lower_left_.z || p.r().x > upper_right_.x ||
-          p.r().y > upper_right_.y || p.r().z > upper_right_.z) {
+      if (check_hit_boundary(p)) {
         p.wgt() = 0; //  Kill the particle
         break;       // Exit the current particle loop and regenerate particles.
       }
@@ -175,8 +173,27 @@ ChordLengthStats::Result ChordLengthStats::execute() const
   return result; // Return the result containing chord length statistics
 }
 
-// Determine if the current material ID and the previous material ID match both
-// the base material and the stochastic medium material
+bool ChordLengthStats::check_hit_boundary(const Particle& p) const
+{
+  //! \brief Check if the position is within the defined bounding box
+  // Check if the position is within the defined boundaries
+  if (p.r().x < lower_left_.x || p.r().y < lower_left_.y ||
+      p.r().z < lower_left_.z || p.r().x > upper_right_.x ||
+      p.r().y > upper_right_.y || p.r().z > upper_right_.z)
+    return true; // If the position is not within bounds, return true
+  if (p.surface() != SURFACE_NONE) {
+    // If the particle is on a surface, check if the surface has a boundary
+    // condition
+    const auto& surf {model::surfaces[p.surface_index()].get()};
+    if (surf->bc_) {
+      return true; // If the surface has a boundary condition, return true
+    }
+  }
+  return false; // If the position is within bounds, return false
+}
+
+// Determine if the current material ID and the previous material ID match
+// both the base material and the stochastic medium material
 bool ChordLengthStats::check_material_match(
   int32_t index1, int32_t index2) const
 {
