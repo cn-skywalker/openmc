@@ -56,7 +56,7 @@ class ChordLengthStats:
         self.lower_left = lower_left
         self.upper_right = upper_right
         self.tally_bins = tally_bins
-        self.chord_length = {}
+        self.chord_length = []
 
     @property
     def samples(self):
@@ -157,7 +157,7 @@ class ChordLengthStats:
             f.attrs['lower_left'] = self.lower_left
             f.attrs['upper_right'] = self.upper_right
             f.create_dataset('tally_bins', data=self.tally_bins)
-            f.create_dataset('chord_length', data=list(self.chord_length.items()))
+            f.create_dataset('chord_length', data=self.chord_length.items())
 
     @classmethod
     def from_hdf5(cls, filename):
@@ -181,7 +181,41 @@ class ChordLengthStats:
             lower_left = f.attrs['lower_left']
             upper_right = f.attrs['upper_right']
             tally_bins = f['tally_bins'][:]
-            chord_length = dict(f['chord_length'][:])
+            chord_length = f['chord_length'][:]
         stats = cls(matrix_domain_id, stochastic_media_domain_id, samples, lower_left, upper_right, tally_bins)
         stats.chord_length = chord_length
         return stats
+    
+    def Result(filename):
+        """Load chord length statistics from an HDF5 file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the HDF5 file.
+
+        Returns
+        -------
+        openmc.ChordLengthStats
+            Chord length statistics object.
+        """
+   
+        data = {}
+
+        with h5py.File(filename, 'r') as f:
+            # read attributes
+            data['filetype'] = f.attrs['filetype']
+            data['version'] = f.attrs['version']
+            data['openmc_version'] = f.attrs['openmc_version']
+            data['date_and_time'] = f.attrs['date_and_time']
+            data['samples'] = f.attrs['samples']
+            data['lower_left'] = f.attrs['lower_left']
+            data['upper_right'] = f.attrs['upper_right']
+            data['domain_type'] = f.attrs['domain_type']
+
+            # read matrix and stochastic media domain IDs
+            data['tally_bins'] = f['tally_bins'][:]
+
+            # read chord length frequencies
+            data['chord_length'] = f['chord_length'][:]
+        return data
