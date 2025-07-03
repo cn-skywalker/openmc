@@ -75,6 +75,7 @@ public:
   //----------------------------------------------------------------------------
 
   virtual void sample_material(GeometryState& p) = 0;
+  virtual double sample_chord_length(Particle& p) const = 0;
   virtual void adjust_indices();
 
 protected:
@@ -89,6 +90,7 @@ public:
   CLS_Media() {};
 
   void sample_material(GeometryState& p) override;
+  double sample_chord_length(Particle& p) const;
 };
 //==============================================================================
 // Non-member functions

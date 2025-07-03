@@ -129,17 +129,25 @@ double distance_to_stochamedia(Particle& p)
   auto& media = *model::stochastic_media[c.fill_];
 
   double distance = INFINITY;
-  if (p.status() == ParticleStatus::IN_STOCHASTIC_MEDIA) {
-    // Designed for a randomized medium only for the time
-    // being, to be upgraded subsequently
-    double cos_value = sqrt(prn(p.current_seed()));
-    distance = 2 * media.radius() * cos_value;
-  } else if (p.status() == ParticleStatus::IN_MATRIX) {
-    double matrix_mean_chord =
-      4 * media.radius() * (1 - media.pf()) / (media.pf() * 3);
-    distance = -matrix_mean_chord * std::log(prn(p.current_seed()));
-  }
+
+  distance = media.sample_chord_length(p);
   return distance;
+}
+
+double CLS_Media::sample_chord_length(Particle& p) const
+{
+  double chord_length = INFINITY;
+  if (p.status() == ParticleStatus::IN_STOCHASTIC_MEDIA) {
+    // Designed for a randomized medium only for the time being, to be upgraded
+    // subsequently
+    double cos_value = sqrt(prn(p.current_seed()));
+    chord_length = 2 * radius() * cos_value;
+
+  } else if (p.status() == ParticleStatus::IN_MATRIX) {
+    double matrix_mean_chord = 4 * radius() * (1 - pf()) / (pf() * 3);
+    chord_length = -matrix_mean_chord * std::log(prn(p.current_seed()));
+  }
+  return chord_length;
 }
 void CLS_Media::sample_material(GeometryState& p)
 {
