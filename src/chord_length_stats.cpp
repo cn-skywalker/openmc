@@ -76,6 +76,7 @@ ChordLengthStats::Result ChordLengthStats::execute() const
 
   // Initialize the result structure
   Result result;
+  double total_length = 0.0; // Initialize total chord length
   result.chord_length.resize(tally_bins_.size() - 1);
   for (auto& chord : result.chord_length) {
     chord = {0.0}; //  Initialize frequency
@@ -85,7 +86,7 @@ ChordLengthStats::Result ChordLengthStats::execute() const
   std::vector<std::vector<double>> local_results(
     omp_get_max_threads(), std::vector<double>(tally_bins_.size() - 1, 0.0));
 // Parallelize the particle loop
-#pragma omp parallel for
+#pragma omp parallel for reduction(+ : total_length)
   for (int64_t i = 0; i < n_samples_; ++i) {
     // Get the thread ID for local result access
     int thread_id = omp_get_thread_num();
@@ -156,6 +157,8 @@ ChordLengthStats::Result ChordLengthStats::execute() const
           if (index.has_value()) {
             size_t tally_index = index.value();
             local_results[thread_id][tally_index] += 1;
+            // Add the total_chord_length to total_length
+            total_length += total_chord_length;
           }
         }
         // Clear current chord length
@@ -168,7 +171,12 @@ ChordLengthStats::Result ChordLengthStats::execute() const
   for (const auto& local_result : local_results) {
     for (size_t i = 0; i < result.chord_length.size(); ++i) {
       result.chord_length[i] += local_result[i];
+      result.total_length = total_length;      // Update total length
+      result.number_length += local_result[i]; // Update number of chord lengths
     }
+    result.average_length =
+      result.total_length /
+      result.number_length; // Calculate average chord length
   }
   return result; // Return the result containing chord length statistics
 }
@@ -264,6 +272,10 @@ void ChordLengthStats::to_hdf5(
   write_dataset(file_id, "tally_bins", tally_bins_);
   //  Write results
   write_dataset(file_id, "chord_length", result.chord_length);
+
+  write_attribute(file_id, "number_length", result.number_length);
+  write_attribute(file_id, "total_length", result.total_length);
+  write_attribute(file_id, "average_length", result.average_length);
 
   //  Close the HDF5 file
   file_close(file_id);

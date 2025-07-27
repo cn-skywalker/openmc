@@ -30,6 +30,9 @@ public:
   // Aliases, types
   struct Result {
     vector<double> chord_length; //!< Frequency of chord length
+    int32_t number_length = 0;   //!< Number of chord length
+    double total_length = 0;     //!< Total chord length
+    double average_length = 0;   //!< Average chord length
   };                             // Results for a single domain
 
   // Constructors
