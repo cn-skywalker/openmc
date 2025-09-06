@@ -22,6 +22,7 @@
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/source.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/surface.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/thermal.h"
@@ -38,6 +39,7 @@ void free_memory()
   free_memory_geometry();
   free_memory_surfaces();
   free_memory_material();
+  free_memory_stochastic_media();
   free_memory_volume();
   free_memory_chordl();
   free_memory_simulation();
