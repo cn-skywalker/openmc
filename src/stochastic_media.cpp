@@ -120,6 +120,13 @@ CLS_Media::CLS_Media(pugi::xml_node node)
     fatal_error(fmt::format(
       "An empty pack fraction was specified for stochastic media {}", id_));
   }
+  if (check_for_node(node, "probability_escape")) {
+    probability_escape_ = node.attribute("probability_escape").as_double();
+  } else {
+    fatal_error(fmt::format(
+      "An empty probability escape was specified for stochastic media {}",
+      id_));
+  }
 }
 
 double distance_to_stochamedia(Particle& p)
@@ -131,6 +138,7 @@ double distance_to_stochamedia(Particle& p)
   double distance = INFINITY;
 
   distance = media.sample_chord_length(p);
+
   return distance;
 }
 

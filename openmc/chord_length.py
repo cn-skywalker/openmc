@@ -221,4 +221,5 @@ class ChordLengthStats:
             data['number_length']= f.attrs['number_length']
             data['total_length']= f.attrs['total_length']
             data['average_length']= f.attrs['average_length']
+            data['probability_escape']= f.attrs['probability_escape']
         return data

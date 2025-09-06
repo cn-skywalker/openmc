@@ -12,6 +12,8 @@
 #include "openmc/output.h"
 #include "openmc/random_lcg.h"
 #include "openmc/settings.h"
+#include "openmc/simulation.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/timer.h"
 #include "openmc/xml_interface.h"
 
@@ -53,7 +55,15 @@ ChordLengthStats::ChordLengthStats(pugi::xml_node node)
   tally_bins_ = get_node_array<double>(node, "tally_bins");
   lower_left_ = get_node_array<double>(node, "lower_left");
   upper_right_ = get_node_array<double>(node, "upper_right");
+  if (check_for_node(node, "boundary_surfaces")) {
+    boundary_surfaces_ = get_node_array<int32_t>(node, "boundary_surfaces");
+  }
+  if (check_for_node(node, "flight_length_tally_mat")) {
+    flight_length_tally_mat_ =
+      get_node_array<int32_t>(node, "flight_length_tally_mat");
+  }
 }
+
 ChordLengthStats::Result ChordLengthStats::execute() const
 {
   // Check to make sure domain IDs are valid
@@ -76,17 +86,35 @@ ChordLengthStats::Result ChordLengthStats::execute() const
 
   // Initialize the result structure
   Result result;
-  double total_length = 0.0; // Initialize total chord length
+  double total_length = 0.0;           // Initialize total chord length
+  int32_t total_number_rays = 0;       // Initialize total number of rays
+  int32_t number_rays_to_boundary = 0; // Initialize number of rays to boundary
+  double length_in_matrix = 0.0;       // Initialize length in matrix
+  double length_in_particle = 0.0;
+  // Create a local result for each thread to avoid race conditions
+  std::vector<double> local_length_in_matrix(omp_get_max_threads(), 0.0);
+  std::vector<double> local_length_in_particle(omp_get_max_threads(), 0.0);
+
   result.chord_length.resize(tally_bins_.size() - 1);
   for (auto& chord : result.chord_length) {
     chord = {0.0}; //  Initialize frequency
   }
-
   // Create a local result for each thread to avoid race conditions
   std::vector<std::vector<double>> local_results(
     omp_get_max_threads(), std::vector<double>(tally_bins_.size() - 1, 0.0));
+
+  // Initialize flight length for each material in flight_length_tally_mat_
+
+  for (const auto& mat_id : flight_length_tally_mat_) {
+    result.flight_length_in_materials[mat_id] = 0.0;
+  }
+  // Create a local result for each thread to avoid race conditions
+  std::vector<std::vector<double>> local_flight_length_in_materials(
+    omp_get_max_threads(),
+    std::vector<double>(flight_length_tally_mat_.size(), 0.0));
+
 // Parallelize the particle loop
-#pragma omp parallel for reduction(+ : total_length)
+#pragma omp parallel for reduction(+ : total_length,total_number_rays,number_rays_to_boundary)
   for (int64_t i = 0; i < n_samples_; ++i) {
     // Get the thread ID for local result access
     int thread_id = omp_get_thread_num();
@@ -94,8 +122,11 @@ ChordLengthStats::Result ChordLengthStats::execute() const
     //  current chord length to 0
     // Initialize a particle with a unique ID
     Particle p;
-    p.id() = i; // Set particle ID
     uint64_t seed = init_seed(i, STREAM_VOLUME);
+    p.id() = i;
+    // initialize_history(p, i);
+    int64_t particle_seed = p.id() * 123456789 + p.n_event();
+    init_particle_seeds(particle_seed, p.seeds());
     bool if_first = true;
     Position xi {prn(&seed), prn(&seed), prn(&seed)};
     p.r() = lower_left_ + xi * (upper_right_ - lower_left_);
@@ -107,8 +138,8 @@ ChordLengthStats::Result ChordLengthStats::execute() const
     p.u() = {std::sin(phi) * std::cos(theta), std::sin(phi) * std::sin(theta),
       std::cos(phi)};
 
-    p.r_born() = p.r();            // Set the initial position of the particle
-    double total_chord_length = 0; // Initialize total chord length
+    p.r_born() = p.r();       // Set the initial position of the particle
+    double flight_length = 0; // Initialize total chord length
 
     // If the particle is not within the geometry, skip it
     if (!exhaustive_find_cell(p))
@@ -118,18 +149,32 @@ ChordLengthStats::Result ChordLengthStats::execute() const
       //  Find the position  of the next face along the initial flight direction
       //  and pass through it, and determine whether it exceeds the boundary of
       //  the area.
-      p.boundary() = distance_to_boundary(p);
-      double distance = p.boundary().distance;
-
-      //  Move the particle to the next position
-      for (int j = 0; j < p.n_coord(); ++j) {
-        p.coord(j).r += distance * p.coord(j).u;
+      double distance = this->event_advance(p);
+      total_number_rays += 1; // Increment the total number of rays
+      if (p.status() == ParticleStatus::IN_MATRIX) {
+        local_length_in_matrix[thread_id] += distance;
+      }
+      if (p.status() == ParticleStatus::IN_STOCHASTIC_MEDIA) {
+        local_length_in_particle[thread_id] += distance;
       }
       p.event_cross_surface();
-      total_chord_length += distance;
+      flight_length += distance;
+
+      // Check if the particle is in one of the specified materials
+      if (std::find(flight_length_tally_mat_.begin(),
+            flight_length_tally_mat_.end(),
+            p.material()) != flight_length_tally_mat_.end()) {
+        local_flight_length_in_materials[thread_id][p.material()] +=
+          distance; // Accumulate flight length for the material
+      }
 
       // Determine whether it exceeds the regional boundary
       if (check_hit_boundary(p)) {
+        if (if_first) {
+          // If the particle hit the boundary directly, increment
+          // the number of rays to boundary
+          number_rays_to_boundary += 1;
+        }
         p.wgt() = 0; //  Kill the particle
         break;       // Exit the current particle loop and regenerate particles.
       }
@@ -145,40 +190,75 @@ ChordLengthStats::Result ChordLengthStats::execute() const
 
         // The material is switched, and it is determined whether it matches
         // both the base material and the random medium material.
-
-        if (check_material_match(p.material(), p.material_last()) &&
-            !if_first) {
-          // If matched, use match_index.value() to obtain the index.
-          // Find the index of the tally bin for the current chord length
-          auto index = find_tally_bin_index(total_chord_length);
-
-          // Add the current chord length to the corresponding frequency
-          // statistics.
-          if (index.has_value()) {
-            size_t tally_index = index.value();
-            local_results[thread_id][tally_index] += 1;
-            // Add the total_chord_length to total_length
-            total_length += total_chord_length;
-          }
-        }
-        // Clear current chord length
-        total_chord_length = 0.0;
+        tally_chord_length_pdf(
+          p, flight_length, total_length, local_results, thread_id, if_first);
       }
     }
   }
+
+  length_in_matrix = std::accumulate(
+    local_length_in_matrix.begin(), local_length_in_matrix.end(), 0.0);
+  length_in_particle = std::accumulate(
+    local_length_in_particle.begin(), local_length_in_particle.end(), 0.0);
+  fmt::print("Real packing fraction of particle is: {}\n",
+    length_in_particle / (length_in_matrix + length_in_particle));
 
   // Combine results from all threads
   for (const auto& local_result : local_results) {
     for (size_t i = 0; i < result.chord_length.size(); ++i) {
       result.chord_length[i] += local_result[i];
-      result.total_length = total_length;      // Update total length
       result.number_length += local_result[i]; // Update number of chord lengths
     }
-    result.average_length =
-      result.total_length /
-      result.number_length; // Calculate average chord length
   }
+  result.total_length = total_length; // Update total length
+  result.average_length = result.total_length / result.number_length;
+  result.probability_escape =
+    static_cast<double>(number_rays_to_boundary) / total_number_rays;
+  // Calculate average chord length
   return result; // Return the result containing chord length statistics
+}
+
+void ChordLengthStats::tally_chord_length_pdf(Particle& p,
+  double& flight_length, double& total_length,
+  std::vector<std::vector<double>>& local_results, int thread_id,
+  bool& if_first) const
+{
+  if (check_material_match(p.material(), p.material_last()) && !if_first) {
+    // If matched, use match_index.value() to obtain the index.
+    // Find the index of the tally bin for the current chord length
+    auto index = find_tally_bin_index(flight_length);
+
+    // Add the current chord length to the corresponding frequency
+    // statistics.
+    if (index.has_value()) {
+      size_t tally_index = index.value();
+      local_results[thread_id][tally_index] += 1;
+      // Add the flight_length to total_length
+      total_length += flight_length;
+    }
+  }
+  // Clear current chord length
+  flight_length = 0.0;
+}
+
+double ChordLengthStats::event_advance(Particle& p) const
+{
+
+  p.boundary() = distance_to_boundary(p);
+  double distance = p.boundary().distance;
+  if (p.status() != ParticleStatus::OUTSIDE) {
+    double stocha_media_distance = distance_to_stochamedia(p);
+    if (stocha_media_distance < distance) {
+      distance = stocha_media_distance;
+      p.boundary().if_stochastic_surface = true;
+    }
+  }
+  //  Move the particle to the next position
+  for (int j = 0; j < p.n_coord(); ++j) {
+    p.coord(j).r += distance * p.coord(j).u;
+  }
+
+  return distance; // Return the distance moved by the particle
 }
 
 bool ChordLengthStats::check_hit_boundary(const Particle& p) const
@@ -276,6 +356,7 @@ void ChordLengthStats::to_hdf5(
   write_attribute(file_id, "number_length", result.number_length);
   write_attribute(file_id, "total_length", result.total_length);
   write_attribute(file_id, "average_length", result.average_length);
+  write_attribute(file_id, "probability_escape", result.probability_escape);
 
   //  Close the HDF5 file
   file_close(file_id);

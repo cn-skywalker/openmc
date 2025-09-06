@@ -286,40 +286,44 @@ void Particle::event_advance()
 
 void Particle::event_cross_surface()
 {
-  // Saving previous cell data
-  for (int j = 0; j < n_coord(); ++j) {
-    cell_last(j) = coord(j).cell;
-  }
-  n_coord_last() = n_coord();
-
-  // Set surface that particle is on and adjust coordinate levels
-  surface() = boundary().surface;
-  n_coord() = boundary().coord_level;
-
-  if (boundary().lattice_translation[0] != 0 ||
-      boundary().lattice_translation[1] != 0 ||
-      boundary().lattice_translation[2] != 0) {
-    // Particle crosses lattice boundary
-
-    bool verbose = settings::verbosity >= 10 || trace();
-    cross_lattice(*this, boundary(), verbose);
-    event() = TallyEvent::LATTICE;
+  if (boundary().if_stochastic_surface) {
+    this->cross_surface_in_stochmedia();
   } else {
-    // Particle crosses surface
-    const auto& surf {model::surfaces[surface_index()].get()};
-    // If BC, add particle to surface source before crossing surface
-    if (surf->surf_source_ && surf->bc_) {
-      add_surf_source_to_bank(*this, *surf);
+    // Saving previous cell data
+    for (int j = 0; j < n_coord(); ++j) {
+      cell_last(j) = coord(j).cell;
     }
-    this->cross_surface(*surf);
-    // If no BC, add particle to surface source after crossing surface
-    if (surf->surf_source_ && !surf->bc_) {
-      add_surf_source_to_bank(*this, *surf);
+    n_coord_last() = n_coord();
+
+    // Set surface that particle is on and adjust coordinate levels
+    surface() = boundary().surface;
+    n_coord() = boundary().coord_level;
+
+    if (boundary().lattice_translation[0] != 0 ||
+        boundary().lattice_translation[1] != 0 ||
+        boundary().lattice_translation[2] != 0) {
+      // Particle crosses lattice boundary
+
+      bool verbose = settings::verbosity >= 10 || trace();
+      cross_lattice(*this, boundary(), verbose);
+      event() = TallyEvent::LATTICE;
+    } else {
+      // Particle crosses surface
+      const auto& surf {model::surfaces[surface_index()].get()};
+      // If BC, add particle to surface source before crossing surface
+      if (surf->surf_source_ && surf->bc_) {
+        add_surf_source_to_bank(*this, *surf);
+      }
+      this->cross_surface(*surf);
+      // If no BC, add particle to surface source after crossing surface
+      if (surf->surf_source_ && !surf->bc_) {
+        add_surf_source_to_bank(*this, *surf);
+      }
+      if (settings::weight_window_checkpoint_surface) {
+        apply_weight_windows(*this);
+      }
+      event() = TallyEvent::SURFACE;
     }
-    if (settings::weight_window_checkpoint_surface) {
-      apply_weight_windows(*this);
-    }
-    event() = TallyEvent::SURFACE;
   }
   // Score cell to cell partial currents
   if (!model::active_surface_tallies.empty()) {

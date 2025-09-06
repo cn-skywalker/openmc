@@ -28,6 +28,13 @@ public:
   Stochastic_Media() {};
   virtual ~Stochastic_Media();
 
+  // Add a virtual function to access probability_escape_
+  virtual double probability_escape() const
+  {
+    throw std::runtime_error("get_probability_escape() not implemented for "
+                             "this type of Stochastic_Media.");
+  }
+
   // Accessors
   //! Get name
   //! \return Stochastic Media name
@@ -91,6 +98,9 @@ public:
 
   void sample_material(GeometryState& p) override;
   double sample_chord_length(Particle& p) const;
+  // The probability of escape from the domain
+  double probability_escape_;
+  double probability_escape() const override { return probability_escape_; }
 };
 //==============================================================================
 // Non-member functions

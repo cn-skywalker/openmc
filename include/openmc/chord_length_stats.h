@@ -29,11 +29,14 @@ class ChordLengthStats {
 public:
   // Aliases, types
   struct Result {
-    vector<double> chord_length; //!< Frequency of chord length
-    int32_t number_length = 0;   //!< Number of chord length
-    double total_length = 0;     //!< Total chord length
-    double average_length = 0;   //!< Average chord length
-  };                             // Results for a single domain
+    vector<double> chord_length;   //!< Frequency of chord length
+    int32_t number_length = 0;     //!< Number of chord length
+    double total_length = 0;       //!< Total chord length
+    double average_length = 0;     //!< Average chord length
+    double probability_escape = 0; //!< Probability of escape from the domain
+    std::unordered_map<int32_t, double>
+      flight_length_in_materials; // Flight length for each material
+  };                              // Results for a single domain
 
   // Constructors
   ChordLengthStats(pugi::xml_node node);
@@ -48,6 +51,7 @@ public:
   //!
   //! \return Vector of results for each user-specified domain
   Result execute() const;
+  double event_advance(Particle& p) const;
 
   //! \brief Write chord length statistics results to HDF5 file
   //!
@@ -56,6 +60,9 @@ public:
   void to_hdf5(const std::string& filename, const Result& result) const;
   bool check_material_match(int32_t index1, int32_t index2) const;
   bool check_hit_boundary(const Particle& p) const;
+  void tally_chord_length_pdf(Particle& p, double& flight_length,
+    double& total_length, std::vector<std::vector<double>>& local_results,
+    int thread_id, bool& if_first) const;
 
   //! \brief Determine the index of the interval in tally_bins_ where
   //! total_chord_length falls
@@ -73,6 +80,10 @@ public:
   int32_t matrix_domain_id_; //!< IDs of matrix domains
   int32_t stochastic_media_domain_id_; //!< IDs of stachastic media domains
   vector<double> tally_bins_;          //!< Bins for the chord length statistics
+  vector<int32_t>
+    boundary_surfaces_; //!< Boundary surfaces for the chord length statistics
+  vector<int32_t>
+    flight_length_tally_mat_; //!< Flight length tally for material domains
 };
 
 //==============================================================================
