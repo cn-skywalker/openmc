@@ -791,7 +791,7 @@ void transport_history_based_single_particle(Particle& p)
     }
     if (p.alive()) {
       if (p.collision_distance() > p.boundary().distance() ||
-          p.boundary().if_stochastic_surface) {
+          p.boundary().if_stochastic_surface()) {
         p.event_cross_surface();
       } else if (p.alive()) {
         p.event_collide();

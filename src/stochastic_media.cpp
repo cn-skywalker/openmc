@@ -131,7 +131,7 @@ CLS_Media::CLS_Media(pugi::xml_node node)
 
 double distance_to_stochamedia(Particle& p)
 { // Sample the distance to the stochastic media
-  auto i_cell = p.lowest_coord().cell;
+  auto i_cell = p.lowest_coord().cell();
   Cell& c {*model::cells[i_cell]};
   auto& media = *model::stochastic_media[c.fill_];
 
@@ -163,7 +163,7 @@ void CLS_Media::sample_material(GeometryState& p)
   p.sqrtkT_last() = p.sqrtkT();
 
   // Sample the material based on the packing fraction
-  auto i_cell = p.lowest_coord().cell;
+  auto i_cell = p.lowest_coord().cell();
   Cell& c {*model::cells[i_cell]};
 
   double rand = openmc::prn(this->current_seed());

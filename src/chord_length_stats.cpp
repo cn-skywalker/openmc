@@ -245,17 +245,17 @@ double ChordLengthStats::event_advance(Particle& p) const
 {
 
   p.boundary() = distance_to_boundary(p);
-  double distance = p.boundary().distance;
+  double distance = p.boundary().distance();
   if (p.status() != ParticleStatus::OUTSIDE) {
     double stocha_media_distance = distance_to_stochamedia(p);
     if (stocha_media_distance < distance) {
       distance = stocha_media_distance;
-      p.boundary().if_stochastic_surface = true;
+      p.boundary().is_stochastic_surface();
     }
   }
   //  Move the particle to the next position
   for (int j = 0; j < p.n_coord(); ++j) {
-    p.coord(j).r += distance * p.coord(j).u;
+    p.coord(j).r() += distance * p.coord(j).u();
   }
 
   return distance; // Return the distance moved by the particle

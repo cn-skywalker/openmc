@@ -250,7 +250,7 @@ void Particle::event_advance()
     double stocha_media_distance = distance_to_stochamedia(*this);
     if (stocha_media_distance < distance) {
       distance = stocha_media_distance;
-      boundary().if_stochastic_surface = true;
+      boundary().is_stochastic_surface();
     }
   }
 
@@ -284,7 +284,7 @@ void Particle::event_advance()
 
 void Particle::event_cross_surface()
 {
-  if (boundary().if_stochastic_surface) {
+  if (boundary().if_stochastic_surface()) {
     this->cross_surface_in_stochmedia();
   } else {
     // Saving previous cell data
@@ -626,7 +626,7 @@ void Particle::cross_surface_in_stochmedia()
   surface() = SURFACE_NONE;
   bool verbose = settings::verbosity >= 10 || trace();
 
-  double i_cell = this->lowest_coord().cell;
+  double i_cell = this->lowest_coord().cell();
   Cell& c {*model::cells[i_cell]};
 
   this->cell_instance() = 0;

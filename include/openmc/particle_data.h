@@ -236,6 +236,8 @@ public:
 
   // TODO: off-by-one
   int surface_index() const { return std::abs(surface()) - 1; }
+  bool if_stochastic_surface() const { return if_stochastic_surface_; }
+  void is_stochastic_surface() { if_stochastic_surface_ = true; }
 
 private:
   // Data members
@@ -244,8 +246,8 @@ private:
     SURFACE_NONE};      //!< surface token, non-zero if boundary is surface
   int coord_level_ {0}; //!< coordinate level after crossing boundary
   array<int, 3> lattice_translation_ {
-    0, 0, 0};                         //!< which way lattice indices will change
-  bool if_stochastic_surface {false}; //!< is the surface in stochastic media?
+    0, 0, 0}; //!< which way lattice indices will change
+  bool if_stochastic_surface_ {false}; //!< is the surface in stochastic media?
 };
 
 /*
