@@ -21,23 +21,22 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Enable correct usage of CXX_EXTENSIONS
-if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.22)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.22)
   cmake_policy(SET CMP0128 NEW)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # Command line options
-#===============================================================================
-
-option(OPENMC_USE_OPENMP      "Enable shared-memory parallelism with OpenMP"         ON)
-option(OPENMC_BUILD_TESTS     "Build tests"                                          ON)
-option(OPENMC_ENABLE_PROFILE  "Compile with profiling flags"                         OFF)
-option(OPENMC_ENABLE_COVERAGE "Compile with coverage analysis flags"                 OFF)
-option(OPENMC_USE_DAGMC       "Enable support for DAGMC (CAD) geometry"              OFF)
-option(OPENMC_USE_LIBMESH     "Enable support for libMesh unstructured mesh tallies" OFF)
-option(OPENMC_USE_MPI         "Enable MPI"                                           OFF)
-option(OPENMC_USE_UWUW        "Enable UWUW"                                          OFF)
-option(OPENMC_FORCE_VENDORED_LIBS "Explicitly use submodules defined in 'vendor'"    OFF)
+# ===============================================================================
+option(OPENMC_USE_OPENMP "Enable shared-memory parallelism with OpenMP" ON)
+option(OPENMC_BUILD_TESTS "Build tests" ON)
+option(OPENMC_ENABLE_PROFILE "Compile with profiling flags" OFF)
+option(OPENMC_ENABLE_COVERAGE "Compile with coverage analysis flags" OFF)
+option(OPENMC_USE_DAGMC "Enable support for DAGMC (CAD) geometry" OFF)
+option(OPENMC_USE_LIBMESH "Enable support for libMesh unstructured mesh tallies" OFF)
+option(OPENMC_USE_MPI "Enable MPI" OFF)
+option(OPENMC_USE_UWUW "Enable UWUW" OFF)
+option(OPENMC_FORCE_VENDORED_LIBS "Explicitly use submodules defined in 'vendor'" OFF)
 
 message(STATUS "OPENMC_USE_OPENMP ${OPENMC_USE_OPENMP}")
 message(STATUS "OPENMC_BUILD_TESTS ${OPENMC_BUILD_TESTS}")
@@ -53,11 +52,13 @@ message(STATUS "OPENMC_FORCE_VENDORED_LIBS ${OPENMC_FORCE_VENDORED_LIBS}")
 foreach(OLD_OPT IN ITEMS "openmp" "profile" "coverage" "dagmc" "libmesh")
   if(DEFINED ${OLD_OPT})
     string(TOUPPER ${OLD_OPT} OPT_UPPER)
-    if ("${OLD_OPT}" STREQUAL "profile" OR "${OLD_OPT}" STREQUAL "coverage")
+
+    if("${OLD_OPT}" STREQUAL "profile" OR "${OLD_OPT}" STREQUAL "coverage")
       set(NEW_OPT_PREFIX "OPENMC_ENABLE")
     else()
       set(NEW_OPT_PREFIX "OPENMC_USE")
     endif()
+
     message(WARNING "The OpenMC CMake option '${OLD_OPT}' has been deprecated. "
       "Its value will be ignored. "
       "Please use '-D${NEW_OPT_PREFIX}_${OPT_UPPER}=${${OLD_OPT}}' instead.")
@@ -72,6 +73,7 @@ foreach(OLD_BLD in ITEMS "debug" "optimize")
     else()
       set(BLD_VAR "Release")
     endif()
+
     message(WARNING "The OpenMC CMake option '${OLD_BLD}' has been deprecated. "
       "Its value will be ignored. "
       "OpenMC now uses the CMAKE_BUILD_TYPE variable to set the build mode. "
@@ -80,37 +82,34 @@ foreach(OLD_BLD in ITEMS "debug" "optimize")
   endif()
 endforeach()
 
-#===============================================================================
+# ===============================================================================
 # Set a default build configuration if not explicitly specified
-#===============================================================================
-
+# ===============================================================================
 if(NOT CMAKE_BUILD_TYPE)
-    message(STATUS "No build type selected, defaulting to RelWithDebInfo")
-    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose the type of build" FORCE)
+  message(STATUS "No build type selected, defaulting to RelWithDebInfo")
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose the type of build" FORCE)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # OpenMP for shared-memory parallelism (and GPU support some day!)
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_USE_OPENMP)
   find_package(OpenMP REQUIRED)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # MPI for distributed-memory parallelism
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_USE_MPI)
   find_package(MPI REQUIRED)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # Helper macro for finding a dependency
-#===============================================================================
-
+# ===============================================================================
 macro(find_package_write_status pkg)
   find_package(${pkg} QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+
   if(${pkg}_FOUND)
     message(STATUS "Found ${pkg}: ${${pkg}_DIR} (version ${${pkg}_VERSION})")
   else()
@@ -118,16 +117,17 @@ macro(find_package_write_status pkg)
   endif()
 endmacro()
 
-#===============================================================================
+# ===============================================================================
 # DAGMC Geometry Support - need DAGMC/MOAB
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_USE_DAGMC)
   find_package(DAGMC REQUIRED PATH_SUFFIXES lib/cmake)
-  if (${DAGMC_VERSION} VERSION_LESS 3.2.0)
+
+  if(${DAGMC_VERSION} VERSION_LESS 3.2.0)
     message(FATAL_ERROR "Discovered DAGMC Version: ${DAGMC_VERSION}."
       "Please update DAGMC to version 3.2.0 or greater.")
   endif()
+
   message(STATUS "Found DAGMC: ${DAGMC_DIR} (version ${DAGMC_VERSION})")
 
   # Check if UWUW is needed and available
@@ -136,29 +136,26 @@ if(OPENMC_USE_DAGMC)
   endif()
 endif()
 
-#===============================================================================
+# ===============================================================================
 # libMesh Unstructured Mesh Support
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_USE_LIBMESH)
   find_package(LIBMESH REQUIRED)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # libpng
-#===============================================================================
-
+# ===============================================================================
 find_package(PNG)
 
-#===============================================================================
+# ===============================================================================
 # HDF5 for binary output
-#===============================================================================
+# ===============================================================================
 
 # Unfortunately FindHDF5.cmake will always prefer a serial HDF5 installation
 # over a parallel installation if both appear on the user's PATH. To get around
 # this, we check for the environment variable HDF5_ROOT and if it exists, use it
 # to check whether its a parallel version.
-
 if(NOT DEFINED HDF5_PREFER_PARALLEL)
   if(DEFINED ENV{HDF5_ROOT} AND EXISTS $ENV{HDF5_ROOT}/bin/h5pcc)
     set(HDF5_PREFER_PARALLEL TRUE)
@@ -179,6 +176,7 @@ if(HDF5_IS_PARALLEL)
       To use parallel HDF5, OpenMC needs to be built with MPI support by passing\
       -DOPENMC_USE_MPI=ON when calling cmake.")
   endif()
+
   message(STATUS "Using parallel HDF5")
 endif()
 
@@ -189,40 +187,40 @@ if(${HDF5_VERSION} VERSION_GREATER_EQUAL 1.12.0)
   list(APPEND cxxflags -DH5Oget_info_by_idx_vers=1 -DH5O_info_t_vers=1)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # Set compile/link flags based on which compiler is being used
-#===============================================================================
+# ===============================================================================
 
 # Skip for Visual Studio which has its own configurations through GUI
 if(NOT MSVC)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  if(OPENMC_ENABLE_PROFILE)
+    list(APPEND cxxflags -g -fno-omit-frame-pointer)
+  endif()
 
-if(OPENMC_ENABLE_PROFILE)
-  list(APPEND cxxflags -g -fno-omit-frame-pointer)
+  if(OPENMC_ENABLE_COVERAGE)
+    list(APPEND cxxflags --coverage)
+    list(APPEND ldflags --coverage)
+  endif()
+
+  # Show flags being used
+  message(STATUS "OpenMC C++ flags: ${cxxflags}")
+  message(STATUS "OpenMC Linker flags: ${ldflags}")
 endif()
 
-if(OPENMC_ENABLE_COVERAGE)
-  list(APPEND cxxflags --coverage)
-  list(APPEND ldflags --coverage)
-endif()
-
-# Show flags being used
-message(STATUS "OpenMC C++ flags: ${cxxflags}")
-message(STATUS "OpenMC Linker flags: ${ldflags}")
-
-endif()
-
-#===============================================================================
+# ===============================================================================
 # Update git submodules as needed
-#===============================================================================
+# ===============================================================================
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   option(GIT_SUBMODULE "Check submodules during build" ON)
+
   if(GIT_SUBMODULE)
     message(STATUS "Submodule update")
     execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                    RESULT_VARIABLE GIT_SUBMOD_RESULT)
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      RESULT_VARIABLE GIT_SUBMOD_RESULT)
+
     if(NOT GIT_SUBMOD_RESULT EQUAL 0)
       message(FATAL_ERROR "git submodule update --init failed with \
         ${GIT_SUBMOD_RESULT}, please checkout submodules")
@@ -236,71 +234,71 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/pugixml/CMakeLists.txt")
     turned off or failed. Please update submodules and try again.")
 endif()
 
-#===============================================================================
+# ===============================================================================
 # pugixml library
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_FORCE_VENDORED_LIBS)
   add_subdirectory(vendor/pugixml)
   set_target_properties(pugixml PROPERTIES CXX_STANDARD 14 CXX_EXTENSIONS OFF)
 else()
   find_package_write_status(pugixml)
-  if (NOT pugixml_FOUND)
+
+  if(NOT pugixml_FOUND)
     add_subdirectory(vendor/pugixml)
     set_target_properties(pugixml PROPERTIES CXX_STANDARD 14 CXX_EXTENSIONS OFF)
   endif()
 endif()
 
-#===============================================================================
+# ===============================================================================
 # {fmt} library
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_FORCE_VENDORED_LIBS)
   set(FMT_INSTALL ON CACHE BOOL "Generate the install target.")
   add_subdirectory(vendor/fmt)
 else()
   find_package_write_status(fmt)
-  if (NOT fmt_FOUND)
+
+  if(NOT fmt_FOUND)
     set(FMT_INSTALL ON CACHE BOOL "Generate the install target.")
     add_subdirectory(vendor/fmt)
   endif()
 endif()
 
-#===============================================================================
+# ===============================================================================
 # xtensor header-only library
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_FORCE_VENDORED_LIBS)
   add_subdirectory(vendor/xtl)
   set(xtl_DIR ${CMAKE_CURRENT_BINARY_DIR}/vendor/xtl)
   add_subdirectory(vendor/xtensor)
 else()
   find_package_write_status(xtensor)
-  if (NOT xtensor_FOUND)
+
+  if(NOT xtensor_FOUND)
     add_subdirectory(vendor/xtl)
     set(xtl_DIR ${CMAKE_CURRENT_BINARY_DIR}/vendor/xtl)
     add_subdirectory(vendor/xtensor)
   endif()
 endif()
 
-#===============================================================================
+# ===============================================================================
 # Catch2 library
-#===============================================================================
-
+# ===============================================================================
 if(OPENMC_BUILD_TESTS)
-  if (OPENMC_FORCE_VENDORED_LIBS)
+  if(OPENMC_FORCE_VENDORED_LIBS)
     add_subdirectory(vendor/Catch2)
   else()
     find_package_write_status(Catch2)
-    if (NOT Catch2_FOUND)
+
+    if(NOT Catch2_FOUND)
       add_subdirectory(vendor/Catch2)
     endif()
   endif()
 endif()
 
-#===============================================================================
+# ===============================================================================
 # RPATH information
-#===============================================================================
+# ===============================================================================
 
 # Provide install directory variables as defined by GNU coding standards
 include(GNUInstallDirs)
@@ -311,7 +309,7 @@ include(GNUInstallDirs)
 # https://gitlab.kitware.com/cmake/community/wikis/doc/cmake/RPATH-handling
 
 # use, i.e. don't skip the full RPATH for the build tree
-set(CMAKE_SKIP_BUILD_RPATH  FALSE)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
 
 # when building, don't use the install RPATH already
 # (but later on when installing)
@@ -323,17 +321,18 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # the RPATH to be used when installing, but only if it's not a system directory
 list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_FULL_LIBDIR}" isSystemDir)
+
 if("${isSystemDir}" STREQUAL "-1")
   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_FULL_LIBDIR}")
 endif()
 
-#===============================================================================
+# ===============================================================================
 # libopenmc
-#===============================================================================
-
+# ===============================================================================
 list(APPEND libopenmc_SOURCES
   src/bank.cpp
   src/boundary_condition.cpp
+  src/bounding_box.cpp
   src/bremsstrahlung.cpp
   src/cell.cpp
   src/chain.cpp
@@ -367,6 +366,8 @@ list(APPEND libopenmc_SOURCES
   src/ncrystal_interface.cpp
   src/ncrystal_load.cpp
   src/nuclide.cpp
+  src/octree.cpp
+
   src/output.cpp
   src/particle.cpp
   src/particle_data.cpp
@@ -472,9 +473,9 @@ endif()
 
 target_include_directories(libopenmc
   PUBLIC
-    $<INSTALL_INTERFACE:include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    ${HDF5_INCLUDE_DIRS}
+  $<INSTALL_INTERFACE:include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  ${HDF5_INCLUDE_DIRS}
 )
 
 # Set compile flags
@@ -484,17 +485,18 @@ target_compile_options(libopenmc PRIVATE ${cxxflags})
 target_include_directories(libopenmc
   PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
 
-if (HDF5_IS_PARALLEL)
+if(HDF5_IS_PARALLEL)
   target_compile_definitions(libopenmc PRIVATE -DPHDF5)
 endif()
-if (OPENMC_USE_MPI)
+
+if(OPENMC_USE_MPI)
   target_compile_definitions(libopenmc PUBLIC -DOPENMC_MPI)
 endif()
 
 # target_link_libraries treats any arguments starting with - but not -l as
 # linker flags. Thus, we can pass both linker flags and libraries together.
 target_link_libraries(libopenmc ${ldflags} ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES}
-                      xtensor fmt::fmt ${CMAKE_DL_LIBS})
+  xtensor fmt::fmt ${CMAKE_DL_LIBS})
 
 if(TARGET pugixml::pugixml)
   target_link_libraries(libopenmc pugixml::pugixml)
@@ -520,41 +522,43 @@ if(OPENMC_USE_LIBMESH)
   target_link_libraries(libopenmc PkgConfig::LIBMESH)
 endif()
 
-if (PNG_FOUND)
+if(PNG_FOUND)
   target_compile_definitions(libopenmc PRIVATE USE_LIBPNG)
   target_link_libraries(libopenmc PNG::PNG)
 endif()
 
-if (OPENMC_USE_OPENMP)
+if(OPENMC_USE_OPENMP)
   target_link_libraries(libopenmc OpenMP::OpenMP_CXX)
 endif()
 
-if (OPENMC_USE_MPI)
+if(OPENMC_USE_MPI)
   target_link_libraries(libopenmc MPI::MPI_CXX)
 endif()
 
-if (OPENMC_BUILD_TESTS)
+if(OPENMC_BUILD_TESTS)
   # Add cpp tests directory
   include(CTest)
   add_subdirectory(tests/cpp_unit_tests)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # Log build info that this executable can report later
-#===============================================================================
+# ===============================================================================
 target_compile_definitions(libopenmc PRIVATE BUILD_TYPE=${CMAKE_BUILD_TYPE})
 target_compile_definitions(libopenmc PRIVATE COMPILER_ID=${CMAKE_CXX_COMPILER_ID})
 target_compile_definitions(libopenmc PRIVATE COMPILER_VERSION=${CMAKE_CXX_COMPILER_VERSION})
-if (OPENMC_ENABLE_PROFILE)
+
+if(OPENMC_ENABLE_PROFILE)
   target_compile_definitions(libopenmc PRIVATE PROFILINGBUILD)
 endif()
-if (OPENMC_ENABLE_COVERAGE)
+
+if(OPENMC_ENABLE_COVERAGE)
   target_compile_definitions(libopenmc PRIVATE COVERAGEBUILD)
 endif()
 
-#===============================================================================
+# ===============================================================================
 # openmc executable
-#===============================================================================
+# ===============================================================================
 add_executable(openmc src/main.cpp)
 add_executable(OpenMC::openmc ALIAS openmc)
 target_compile_options(openmc PRIVATE ${cxxflags})
@@ -566,20 +570,18 @@ target_compile_features(openmc PUBLIC cxx_std_17)
 target_compile_features(libopenmc PUBLIC cxx_std_17)
 set_target_properties(openmc libopenmc PROPERTIES CXX_EXTENSIONS OFF)
 
-#===============================================================================
+# ===============================================================================
 # Python package
-#===============================================================================
-
+# ===============================================================================
 add_custom_command(TARGET libopenmc POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   $<TARGET_FILE:libopenmc>
   ${CMAKE_CURRENT_SOURCE_DIR}/openmc/lib/$<TARGET_FILE_NAME:libopenmc>
   COMMENT "Copying libopenmc to Python module directory")
 
-#===============================================================================
+# ===============================================================================
 # Install executable, scripts, manpage, license
-#===============================================================================
-
+# ===============================================================================
 configure_file(cmake/OpenMCConfig.cmake.in "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/OpenMCConfig.cmake" @ONLY)
 configure_file(cmake/OpenMCConfigVersion.cmake.in "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/OpenMCConfigVersion.cmake" @ONLY)
 

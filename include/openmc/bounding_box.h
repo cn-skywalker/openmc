@@ -12,13 +12,28 @@ namespace openmc {
 //! Coordinates for an axis-aligned cuboid that bounds a geometric object.
 //==============================================================================
 
-struct BoundingBox {
-  double xmin = -INFTY;
-  double xmax = INFTY;
-  double ymin = -INFTY;
-  double ymax = INFTY;
-  double zmin = -INFTY;
-  double zmax = INFTY;
+class BoundingBox {
+public:
+  double xmin;
+  double xmax;
+  double ymin;
+  double ymax;
+  double zmin;
+  double zmax;
+
+  BoundingBox()
+    : xmin(-INFTY), xmax(INFTY), ymin(-INFTY), ymax(INFTY), zmin(-INFTY),
+      zmax(INFTY)
+  {}
+
+  BoundingBox(const Position& min, const Position& max)
+    : xmin(min.x), xmax(max.x), ymin(min.y), ymax(max.y), zmin(min.z),
+      zmax(max.z)
+  {}
+
+  BoundingBox(double x1, double x2, double y1, double y2, double z1, double z2)
+    : xmin(x1), xmax(x2), ymin(y1), ymax(y2), zmin(z1), zmax(z2)
+  {}
 
   inline BoundingBox operator&(const BoundingBox& other)
   {
@@ -58,6 +73,10 @@ struct BoundingBox {
 
   inline Position min() const { return {xmin, ymin, zmin}; }
   inline Position max() const { return {xmax, ymax, zmax}; }
+  bool contains(const Position& point) const;
+  bool intersects(const int32_t& sphere_token) const;
+  Position getCenter() const;
+  Position getSize() const;
 };
 
 } // namespace openmc

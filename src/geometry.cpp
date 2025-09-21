@@ -301,7 +301,7 @@ bool find_cell_in_virtual_lattice(GeometryState& p, bool verbose)
     for (int i = p.n_coord(); i < model::n_coord_levels; i++) {
       p.coord(i).reset();
     }
-    p.coord(p.n_coord() - 1).cell() =
+    p.lowest_coord().cell() =
       model::cell_map[model::surfaces[i_surface - 1]->triso_base_index_];
   } else if (p.surface() < 0) {
     for (int i = p.n_coord(); i < model::n_coord_levels; i++) {
