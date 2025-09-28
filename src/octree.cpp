@@ -3,11 +3,11 @@
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <openmc/octree.h>
 #include <vector>
 
 #include <openmc/bounding_box.h>
 #include <openmc/cell.h>
+#include <openmc/octree.h>
 
 namespace openmc {
 bool OctreeNode::insert(const int32_t& sphere_token)
@@ -198,6 +198,48 @@ bool OctreeNode::rayAABBIntersect(const Position& origin,
   }
 
   return true;
+}
+void OctreeNode::printTree(int depth) const
+{
+  // 创建缩进字符串
+  std::string indent(depth * 2, ' ');
+
+  // 打印当前节点信息
+  std::cout << indent << "└─ Node [depth=" << depth
+            << ", spheres=" << spheres_indexs_.size()
+            << ", divided=" << (divided_ ? "true" : "false") << "]\n";
+
+  // 打印边界框信息
+  Position center = boundary_.getCenter();
+  Position size = boundary_.getSize();
+  std::cout << indent << "   Bounds: min(" << boundary_.xmin << ", "
+            << boundary_.ymin << ", " << boundary_.zmin << ")"
+            << " max(" << boundary_.xmax << ", " << boundary_.ymax << ", "
+            << boundary_.zmax << ")\n";
+  std::cout << indent << "   Center: (" << center.x << ", " << center.y << ", "
+            << center.z << ")"
+            << " Size: (" << size.x << ", " << size.y << ", " << size.z
+            << ")\n";
+
+  // 打印当前节点中的球体
+  if (!spheres_indexs_.empty()) {
+    std::cout << indent << "   Spheres: ";
+    for (size_t i = 0; i < spheres_indexs_.size(); ++i) {
+      std::cout << spheres_indexs_[i];
+      if (i < spheres_indexs_.size() - 1) {
+        std::cout << ", ";
+      }
+    }
+    std::cout << "\n";
+  }
+
+  // 递归打印子节点
+  if (divided_) {
+    for (size_t i = 0; i < children_.size(); ++i) {
+      std::cout << indent << "  Child " << i + 1 << ":\n";
+      children_[i]->printTree(depth + 1);
+    }
+  }
 }
 
 } // namespace openmc

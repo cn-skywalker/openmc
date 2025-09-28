@@ -77,6 +77,28 @@ vector<vector<int32_t>> generate_triso_distribution(vector<int> lattice_shape,
   return triso_distribution;
 }
 
+void generate_triso_distribution(vector<double> lattice_lower_left,
+  vector<double> lattice_upper_right, vector<std::int32_t> cell_rpn,
+  OctreeNode* octree, int id)
+{
+  for (int32_t token : cell_rpn) {
+    if (token >= OP_UNION)
+      continue;
+    vector<double> triso_center = model::surfaces[abs(token) - 1]->get_center();
+    double triso_radius = model::surfaces[abs(token) - 1]->get_radius();
+    if (triso_center[0] < lattice_lower_left[0] + triso_radius ||
+        triso_center[0] > lattice_upper_right[0] - triso_radius ||
+        triso_center[1] < lattice_lower_left[1] + triso_radius ||
+        triso_center[1] > lattice_upper_right[1] - triso_radius ||
+        triso_center[2] < lattice_lower_left[2] + triso_radius ||
+        triso_center[2] > lattice_upper_right[2] - triso_radius)
+      fatal_error(fmt::format(" the surface(is{}) of TRISO particle  is "
+                              "outside the virtual lattice bounds.",
+        abs(model::surfaces[abs(token) - 1]->id_)));
+    octree->insert(token);
+  }
+}
+
 //==============================================================================
 // Cell implementation
 //==============================================================================
@@ -553,8 +575,22 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   vector<int32_t> rpn = region_.generate_postfix(id_);
 
   if (virtual_lattice_) {
+    // 将triso粒子分布到均匀网格中去
     vl_triso_distribution_ = generate_triso_distribution(
       vl_shape_, vl_pitch_, vl_lower_left_, rpn, id_);
+    // 计算右上角坐标
+    vector<double> vl_upper_right(3);
+    for (int i = 0; i < 3; i++) {
+      vl_upper_right[i] = vl_lower_left_[i] + vl_shape_[i] * vl_pitch_[i];
+    }
+    // 初始化八叉树
+    BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
+    int capacity = 10; // 每个节点的容量
+    vl_octree_ = new OctreeNode(vl_boundary, capacity);
+    //  将triso粒子插入八叉树网格中去
+    generate_triso_distribution(
+      vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
+    vl_octree_->printTree(); // 打印八叉树结构（用于调试）
   }
 
   if (triso_particle_) {

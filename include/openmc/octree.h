@@ -1,3 +1,5 @@
+#ifndef OCTREE_H
+#define OCTREE_H
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -35,6 +37,9 @@ public:
   std::pair<int, Position> queryRay(const Position& origin,
     const Position& direction, int32_t on_surface) const;
 
+  // 打印八叉树结构（用于调试）
+  void printTree(int depth = 0) const;
+
 private:
   // 分割节点
   void subdivide();
@@ -44,3 +49,4 @@ private:
 };
 
 } // namespace openmc
+#endif // OCTREE_H

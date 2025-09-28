@@ -15,6 +15,7 @@
 #include "openmc/constants.h"
 #include "openmc/memory.h" // for unique_ptr
 #include "openmc/neighbor_list.h"
+#include "openmc/octree.h"
 #include "openmc/position.h"
 #include "openmc/surface.h"
 #include "openmc/universe.h"
@@ -349,6 +350,7 @@ public:
   vector<double> vl_pitch_;
   vector<int32_t> vl_shape_;
   vector<vector<int32_t>> vl_triso_distribution_;
+  OctreeNode* vl_octree_ {nullptr};
   //! \brief Index corresponding to this cell in distribcell arrays
   int distribcell_index_ {C_NONE};
 
