@@ -682,8 +682,6 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
 {
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
-  double min_dis_vl;
-  int32_t i_surf_vl;
 
   double max_dis = p->collision_distance();
   double tol_dis = 0;
