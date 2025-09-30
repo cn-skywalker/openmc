@@ -38,7 +38,7 @@ public:
     const Position& direction, int32_t on_surface) const;
 
   // 打印八叉树结构（用于调试）
-  void printTree(int depth = 0) const;
+  void printTree(int depth = 0, bool showAll = false) const;
 
 private:
   // 分割节点

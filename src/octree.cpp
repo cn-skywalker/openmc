@@ -7,18 +7,19 @@
 
 #include <openmc/bounding_box.h>
 #include <openmc/cell.h>
+#include <openmc/constants.h>
 #include <openmc/octree.h>
 
 namespace openmc {
 bool OctreeNode::insert(const int32_t& sphere_token)
 {
-  // 如果球体不在节点边界内，不插入
+  // 检查球体是否在节点边界内
   if (!boundary_.intersects(sphere_token)) {
     return false;
   }
 
   // 如果节点未满，直接插入
-  if (spheres_indexs_.size() < capacity_) {
+  if (!divided_ && spheres_indexs_.size() < capacity_) {
     spheres_indexs_.push_back(sphere_token);
     return true;
   }
@@ -26,17 +27,39 @@ bool OctreeNode::insert(const int32_t& sphere_token)
   // 如果节点已满且未分割，先分割
   if (!divided_) {
     subdivide();
+
+    // 重要：将当前节点的球体重新分配到子节点
+    auto old_spheres = std::move(spheres_indexs_);
+    spheres_indexs_.clear();
+
+    for (const auto& token : old_spheres) {
+      // 尝试插入到子节点
+      bool inserted = false;
+      for (auto& child : children_) {
+        if (child->insert(token)) {
+          inserted = true;
+        }
+      }
+      // 如果球体无法插入任何子节点，留在当前节点
+      if (!inserted) {
+        spheres_indexs_.push_back(token);
+      }
+    }
   }
 
-  // 尝试将球体插入子节点
+  // 尝试将新球体插入到子节点
+  bool inserted_to_child = false;
   for (auto& child : children_) {
     if (child->insert(sphere_token)) {
-      return true;
+      inserted_to_child = true;
     }
   }
 
   // 如果球体无法插入任何子节点，留在当前节点
-  spheres_indexs_.push_back(sphere_token);
+  if (!inserted_to_child) {
+    spheres_indexs_.push_back(sphere_token);
+  }
+
   return true;
 }
 
@@ -117,109 +140,116 @@ std::pair<int, Position> OctreeNode::queryRay(
 void OctreeNode::subdivide()
 {
   Position center = boundary_.getCenter();
-  Position size = boundary_.getSize();
-  Position halfSize = size * 0.5;
+  Position min = boundary_.min();
+  Position max = boundary_.max();
 
-  // 创建8个子节点
   children_.reserve(8);
 
-  // 前下左
-  children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(boundary_.min(), center), capacity_));
+  // 统一使用min/max/center来定义边界，确保无重叠无遗漏
+  children_.push_back(
+    std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, min.z),
+                                   Position(center.x, center.y, center.z)),
+      capacity_));
 
-  // 前下右
+  children_.push_back(
+    std::make_unique<OctreeNode>(BoundingBox(Position(center.x, min.y, min.z),
+                                   Position(max.x, center.y, center.z)),
+      capacity_));
+
+  children_.push_back(
+    std::make_unique<OctreeNode>(BoundingBox(Position(min.x, center.y, min.z),
+                                   Position(center.x, max.y, center.z)),
+      capacity_));
+
   children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(center.x, boundary_.ymin, boundary_.zmin),
-      Position(boundary_.xmax, center.y, center.z)),
+    BoundingBox(
+      Position(center.x, center.y, min.z), Position(max.x, max.y, center.z)),
     capacity_));
 
-  // 前上左
+  children_.push_back(
+    std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, center.z),
+                                   Position(center.x, center.y, max.z)),
+      capacity_));
+
   children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(boundary_.xmin, center.y, boundary_.zmin),
-      Position(center.x, boundary_.ymax, center.z)),
+    BoundingBox(
+      Position(center.x, min.y, center.z), Position(max.x, center.y, max.z)),
     capacity_));
 
-  // 前上右
   children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(center.x, center.y, boundary_.zmin),
-      Position(boundary_.xmax, boundary_.ymax, center.z)),
+    BoundingBox(
+      Position(min.x, center.y, center.z), Position(center.x, max.y, max.z)),
     capacity_));
 
-  // 后下左
   children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(boundary_.xmin, boundary_.ymin, center.z),
-      Position(center.x, center.y, boundary_.zmax)),
+    BoundingBox(
+      Position(center.x, center.y, center.z), Position(max.x, max.y, max.z)),
     capacity_));
-
-  // 后下右
-  children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(center.x, boundary_.ymin, center.z),
-      Position(boundary_.xmax, center.y, boundary_.zmax)),
-    capacity_));
-
-  // 后上左
-  children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(Position(boundary_.xmin, center.y, center.z),
-      Position(center.x, boundary_.ymax, boundary_.zmax)),
-    capacity_));
-
-  // 后上右
-  children_.push_back(std::make_unique<OctreeNode>(
-    BoundingBox(center, boundary_.max()), capacity_));
 
   divided_ = true;
 }
 bool OctreeNode::rayAABBIntersect(const Position& origin,
   const Position& direction, const BoundingBox& aabb) const
 {
-  Position invDir =
-    Position(1.0 / direction.x, 1.0 / direction.y, 1.0 / direction.z);
+  double tmin = 0.0; // 射线 t >= 0
+  double tmax = std::numeric_limits<double>::max();
 
-  double t1 = (aabb.xmin - origin.x) * invDir.x;
-  double t2 = (aabb.xmax - origin.x) * invDir.x;
-  double t3 = (aabb.ymin - origin.y) * invDir.y;
-  double t4 = (aabb.ymax - origin.y) * invDir.y;
-  double t5 = (aabb.zmin - origin.z) * invDir.z;
-  double t6 = (aabb.zmax - origin.z) * invDir.z;
+  for (int i = 0; i < 3; ++i) {
+    double dir = direction[i];
+    double minVal = aabb.min()[i];
+    double maxVal = aabb.max()[i];
 
-  double tmin =
-    std::max(std::max(std::min(t1, t2), std::min(t3, t4)), std::min(t5, t6));
-  double tmax =
-    std::min(std::min(std::max(t1, t2), std::max(t3, t4)), std::max(t5, t6));
+    if (std::abs(dir) < FP_PRECISION) {
+      // 射线平行于该轴
+      if (origin[i] < minVal || origin[i] > maxVal) {
+        return false; // 不在范围内，不相交
+      }
+      // 否则不限制 t 范围，跳过
+    } else {
+      double invD = 1.0 / dir;
+      double t0 = (minVal - origin[i]) * invD;
+      double t1 = (maxVal - origin[i]) * invD;
 
-  // 如果tmax < 0，射线在AABB后面
-  if (tmax < 0) {
-    return false;
-  }
+      if (invD < 0.0) {
+        std::swap(t0, t1);
+      }
 
-  // 如果tmin > tmax，射线不与AABB相交
-  if (tmin > tmax) {
-    return false;
+      tmin = std::max(t0, tmin);
+      tmax = std::min(t1, tmax);
+
+      if (tmax <= tmin) {
+        return false;
+      }
+    }
   }
 
   return true;
 }
-void OctreeNode::printTree(int depth) const
+void OctreeNode::printTree(int depth, bool showAll) const
 {
+  if (!showAll && spheres_indexs_.empty() && !divided_) {
+    return; // 如果节点为空且未分割，且不要求显示所有节点，则跳过
+  }
   // 创建缩进字符串
   std::string indent(depth * 2, ' ');
-
   // 打印当前节点信息
   std::cout << indent << "└─ Node [depth=" << depth
             << ", spheres=" << spheres_indexs_.size()
             << ", divided=" << (divided_ ? "true" : "false") << "]\n";
+  if (showAll) {
 
-  // 打印边界框信息
-  Position center = boundary_.getCenter();
-  Position size = boundary_.getSize();
-  std::cout << indent << "   Bounds: min(" << boundary_.xmin << ", "
-            << boundary_.ymin << ", " << boundary_.zmin << ")"
-            << " max(" << boundary_.xmax << ", " << boundary_.ymax << ", "
-            << boundary_.zmax << ")\n";
-  std::cout << indent << "   Center: (" << center.x << ", " << center.y << ", "
-            << center.z << ")"
-            << " Size: (" << size.x << ", " << size.y << ", " << size.z
-            << ")\n";
+    // 打印边界框信息
+    Position center = boundary_.getCenter();
+    Position size = boundary_.getSize();
+    std::cout << indent << "   Bounds: min(" << boundary_.xmin << ", "
+              << boundary_.ymin << ", " << boundary_.zmin << ")"
+              << " max(" << boundary_.xmax << ", " << boundary_.ymax << ", "
+              << boundary_.zmax << ")\n";
+    std::cout << indent << "   Center: (" << center.x << ", " << center.y
+              << ", " << center.z << ")"
+              << " Size: (" << size.x << ", " << size.y << ", " << size.z
+              << ")\n";
+  }
 
   // 打印当前节点中的球体
   if (!spheres_indexs_.empty()) {
