@@ -95,15 +95,15 @@ int32_t OctreeNode::queryPoint(const Position& point) const
   return -1;
 }
 
-std::pair<int, Position> OctreeNode::queryRay(
+std::pair<int32_t, double> OctreeNode::queryRay(
   const Position& origin, const Position& direction, int32_t on_surface) const
 {
-  // 如果射线与节点边界不相交，返回-1
+  // 如果射线与节点边界不相交，返回无效结果-1
   if (!rayAABBIntersect(origin, direction, boundary_)) {
-    return {-1, Position()};
+    return {-1, std::numeric_limits<double>::max()};
   }
 
-  std::pair<int, Position> result = {-1, Position()};
+  std::pair<int32_t, double> result = {-1, std::numeric_limits<double>::max()};
   double minT = std::numeric_limits<double>::max();
 
   // 检查当前节点的球体
@@ -114,7 +114,7 @@ std::pair<int, Position> OctreeNode::queryRay(
     if (t > 0 && t < minT) {
       minT = t;
       result.first = sphere_token;
-      result.second = origin + direction * t;
+      result.second = t;
     }
   }
 
@@ -122,14 +122,9 @@ std::pair<int, Position> OctreeNode::queryRay(
   if (divided_) {
     for (const auto& child : children_) {
       auto childResult = child->queryRay(origin, direction, on_surface);
-      if (childResult.first != -1) {
-        Position hitPoint = childResult.second;
-        Position l = (hitPoint - origin);
-        double t = sqrt(l.x * l.x + l.y * l.y + l.z * l.z);
-        if (t < minT) {
-          minT = t;
-          result = childResult;
-        }
+      if (childResult.first != -1 && childResult.second < minT) {
+        minT = childResult.second;
+        result = childResult;
       }
     }
   }

@@ -446,6 +446,9 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
     virtual_lattice_ = false;
   }
 
+  // 检查是否开启八叉树加速
+  bool vl_octree_present = check_for_node(cell_node, "octree");
+
   if (check_for_node(cell_node, "triso_particle")) {
     triso_particle_ = get_node_value_bool(cell_node, "triso_particle");
   } else {
@@ -583,14 +586,17 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
     for (int i = 0; i < 3; i++) {
       vl_upper_right[i] = vl_lower_left_[i] + vl_shape_[i] * vl_pitch_[i];
     }
-    // 初始化八叉树
-    BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
-    int capacity = 10; // 每个节点的容量
-    vl_octree_ = new OctreeNode(vl_boundary, capacity);
-    //  将triso粒子插入八叉树网格中去
-    generate_triso_distribution(
-      vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
-    vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+
+    if (vl_octree_present) {
+      // 初始化八叉树
+      BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
+      int capacity = 10; // 每个节点的容量
+      vl_octree_ = new OctreeNode(vl_boundary, capacity);
+      //  将triso粒子插入八叉树网格中去
+      generate_triso_distribution(
+        vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
+      vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+    }
   }
 
   if (triso_particle_) {
@@ -683,6 +689,23 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
 
+  if (vl_octree_) {
+    // 首先使用八叉树查询最近的球体交点
+    auto octree_result = vl_octree_->queryRay(r, u, on_surface);
+    if (octree_result.first != -1) {
+      // 八叉树找到了碰撞距离
+      double octree_dist = octree_result.second;
+
+      if (octree_dist < min_dist) {
+        min_dist = octree_dist;
+        i_surf = -octree_result.first;
+      }
+
+      // 如果八叉树已经找到交点，直接返回结果
+      return {min_dist, i_surf};
+    }
+  }
+
   double max_dis = p->collision_distance();
   double tol_dis = 0;
   vector<double> dis_to_bou(3), dis_to_bou_max(3);
@@ -762,6 +785,13 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
       break;
     }
   }
+
+  // 判断八叉树搜索结果是否与网格搜索结果一致(后续可删除)
+  // if (i_surf != std::numeric_limits<int32_t>::max() && octree_result.first ==
+  // -1) {
+  //   warning(fmt::format("八叉树没有找到交点"));
+  // }
+  
   return {min_dist, i_surf};
 }
 

@@ -34,7 +34,7 @@ public:
   int32_t queryPoint(const Position& point) const;
 
   // 查询射线碰到的第一个球体，返回球体ID和交点（如果没有碰到任何球体返回-1）
-  std::pair<int, Position> queryRay(const Position& origin,
+  std::pair<int32_t, double> queryRay(const Position& origin,
     const Position& direction, int32_t on_surface) const;
 
   // 打印八叉树结构（用于调试）
