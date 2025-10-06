@@ -99,7 +99,7 @@ std::pair<int32_t, double> OctreeNode::queryRay(
   const Position& origin, const Position& direction, int32_t on_surface) const
 {
   // 如果射线与节点边界不相交，返回无效结果-1
-  if (!rayAABBIntersect(origin, direction, boundary_)) {
+  if (!boundary_.rayIntersect(origin, direction)) {
     return {-1, std::numeric_limits<double>::max()};
   }
 
@@ -183,43 +183,7 @@ void OctreeNode::subdivide()
 
   divided_ = true;
 }
-bool OctreeNode::rayAABBIntersect(const Position& origin,
-  const Position& direction, const BoundingBox& aabb) const
-{
-  double tmin = 0.0; // 射线 t >= 0
-  double tmax = std::numeric_limits<double>::max();
 
-  for (int i = 0; i < 3; ++i) {
-    double dir = direction[i];
-    double minVal = aabb.min()[i];
-    double maxVal = aabb.max()[i];
-
-    if (std::abs(dir) < FP_PRECISION) {
-      // 射线平行于该轴
-      if (origin[i] < minVal || origin[i] > maxVal) {
-        return false; // 不在范围内，不相交
-      }
-      // 否则不限制 t 范围，跳过
-    } else {
-      double invD = 1.0 / dir;
-      double t0 = (minVal - origin[i]) * invD;
-      double t1 = (maxVal - origin[i]) * invD;
-
-      if (invD < 0.0) {
-        std::swap(t0, t1);
-      }
-
-      tmin = std::max(t0, tmin);
-      tmax = std::min(t1, tmax);
-
-      if (tmax <= tmin) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
 void OctreeNode::printTree(int depth, bool showAll) const
 {
   if (!showAll && spheres_indexs_.empty() && !divided_) {

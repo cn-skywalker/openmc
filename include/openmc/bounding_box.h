@@ -77,6 +77,7 @@ public:
   bool intersects(const int32_t& sphere_token) const;
   Position getCenter() const;
   Position getSize() const;
+  bool rayIntersect(const Position& origin, const Position& direction) const;
 };
 
 } // namespace openmc

@@ -39,4 +39,43 @@ Position BoundingBox::getSize() const
 {
   return Position(xmax - xmin, ymax - ymin, zmax - zmin);
 }
+
+bool BoundingBox::rayIntersect(
+  const Position& origin, const Position& direction) const
+{
+  double tmin = 0.0; // 射线 t >= 0
+  double tmax = std::numeric_limits<double>::max();
+
+  for (int i = 0; i < 3; ++i) {
+    double dir = direction[i];
+    double minVal = min()[i];
+    double maxVal = max()[i];
+
+    if (std::abs(dir) < FP_PRECISION) {
+      // 射线平行于该轴
+      if (origin[i] < minVal || origin[i] > maxVal) {
+        return false; // 不在范围内，不相交
+      }
+      // 否则不限制 t 范围，跳过
+    } else {
+      double invD = 1.0 / dir;
+      double t0 = (minVal - origin[i]) * invD;
+      double t1 = (maxVal - origin[i]) * invD;
+
+      if (invD < 0.0) {
+        std::swap(t0, t1);
+      }
+
+      tmin = std::max(t0, tmin);
+      tmax = std::min(t1, tmax);
+
+      if (tmax <= tmin) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 } // namespace openmc
