@@ -162,6 +162,9 @@ Direction Surface::diffuse_reflect(
 
 void Surface::to_hdf5(hid_t group_id) const
 {
+  if (is_triso_surface_) {
+    return;
+  }
   hid_t surf_group = create_group(group_id, fmt::format("surface {}", id_));
 
   if (geom_type() == GeometryType::DAG) {

@@ -344,6 +344,9 @@ void Cell::import_properties_hdf5(hid_t group)
 
 void Cell::to_hdf5(hid_t cell_group) const
 {
+  if (triso_particle_) {
+    return;
+  }
 
   // Create a group for this cell.
   auto group = create_group(cell_group, fmt::format("cell {}", id_));
@@ -590,8 +593,9 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
     if (vl_octree_present) {
       // 初始化八叉树
       BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
-      int capacity = 10; // 每个节点的容量
-      vl_octree_ = new OctreeNode(vl_boundary, capacity);
+      int capacity = std::stoi(get_node_value(cell_node, "octree_capacity"));
+      double minSize = std::stod(get_node_value(cell_node, "octree_minsize"));
+      vl_octree_ = new OctreeNode(vl_boundary, minSize, capacity);
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
@@ -791,7 +795,7 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
   // -1) {
   //   warning(fmt::format("八叉树没有找到交点"));
   // }
-  
+
   return {min_dist, i_surf};
 }
 
