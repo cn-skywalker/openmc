@@ -144,47 +144,49 @@ void OctreeNode::subdivide()
   Position max = boundary_.max();
 
   children_.reserve(8);
+  int child_depth = depth_ + 1;
 
   // 统一使用min/max/center来定义边界，确保无重叠无遗漏
+  // 为每个子节点计算Morton编码
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, min.z),
                                    Position(center.x, center.y, center.z)),
-      min_size_, capacity_));
+      min_size_, capacity_, computeChildMortonCode(0), child_depth));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(center.x, min.y, min.z),
                                    Position(max.x, center.y, center.z)),
-      min_size_, capacity_));
+      min_size_, capacity_, computeChildMortonCode(1), child_depth));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, center.y, min.z),
                                    Position(center.x, max.y, center.z)),
-      min_size_, capacity_));
+      min_size_, capacity_, computeChildMortonCode(2), child_depth));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, min.z), Position(max.x, max.y, center.z)),
-    min_size_, capacity_));
+    min_size_, capacity_, computeChildMortonCode(3), child_depth));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, center.z),
                                    Position(center.x, center.y, max.z)),
-      min_size_, capacity_));
+      min_size_, capacity_, computeChildMortonCode(4), child_depth));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, min.y, center.z), Position(max.x, center.y, max.z)),
-    min_size_, capacity_));
+    min_size_, capacity_, computeChildMortonCode(5), child_depth));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(min.x, center.y, center.z), Position(center.x, max.y, max.z)),
-    min_size_, capacity_));
+    min_size_, capacity_, computeChildMortonCode(6), child_depth));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, center.z), Position(max.x, max.y, max.z)),
-    min_size_, capacity_));
+    min_size_, capacity_, computeChildMortonCode(7), child_depth));
 
   divided_ = true;
 }
@@ -234,6 +236,61 @@ void OctreeNode::printTree(int depth, bool showAll) const
       children_[i]->printTree(depth + 1);
     }
   }
+}
+
+uint64_t OctreeNode::computeChildMortonCode(int child_index) const
+{
+  // 子节点的Morton编码 = 父节点编码左移3位 + 子节点索引
+  return (morton_code_ << 3) | (child_index & 0x7);
+}
+
+uint64_t OctreeNode::computeMortonCode(
+  const Position& pos, const Position& min, const Position& max, int max_depth)
+{
+  // 将位置归一化到[0,1]范围
+  double x_norm = (pos.x - min.x) / (max.x - min.x);
+  double y_norm = (pos.y - min.y) / (max.y - min.y);
+  double z_norm = (pos.z - min.z) / (max.z - min.z);
+
+  // 将归一化坐标映射到整数空间
+  uint32_t x_int = static_cast<uint32_t>(x_norm * ((1 << max_depth) - 1));
+  uint32_t y_int = static_cast<uint32_t>(y_norm * ((1 << max_depth) - 1));
+  uint32_t z_int = static_cast<uint32_t>(z_norm * ((1 << max_depth) - 1));
+
+  // 计算Morton编码（交错位）
+  uint64_t code = 0;
+  for (int i = 0; i < max_depth; ++i) {
+    code |= ((x_int >> i) & 1) << (3 * i);
+    code |= ((y_int >> i) & 1) << (3 * i + 1);
+    code |= ((z_int >> i) & 1) << (3 * i + 2);
+  }
+
+  return code;
+}
+
+void OctreeNode::decodeMortonCode(uint64_t code, int depth, Position& min,
+  Position& max, const Position& root_min, const Position& root_max)
+{
+  double size_x = (root_max.x - root_min.x) / (1 << depth);
+  double size_y = (root_max.y - root_min.y) / (1 << depth);
+  double size_z = (root_max.z - root_min.z) / (1 << depth);
+
+  uint64_t temp_code = code;
+  int x_idx = 0, y_idx = 0, z_idx = 0;
+
+  for (int i = 0; i < depth; ++i) {
+    x_idx |= (temp_code & 1) << i;
+    y_idx |= ((temp_code >> 1) & 1) << i;
+    z_idx |= ((temp_code >> 2) & 1) << i;
+    temp_code >>= 3;
+  }
+
+  min.x = root_min.x + x_idx * size_x;
+  min.y = root_min.y + y_idx * size_y;
+  min.z = root_min.z + z_idx * size_z;
+  max.x = min.x + size_x;
+  max.y = min.y + size_y;
+  max.z = min.z + size_z;
 }
 
 bool OctreeNode::shouldSubdivide() const

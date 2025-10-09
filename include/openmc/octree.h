@@ -22,11 +22,14 @@ private:
   std::vector<int32_t> spheres_indexs_; // 存储的球体的token（带正负号）
   std::vector<std::unique_ptr<OctreeNode>> children_; // 子节点
   bool divided_;                                      // 是否已分割
+  uint64_t morton_code_;                              // Morton编码
+  int depth_;                                         // 节点深度
 
 public:
-  OctreeNode(const BoundingBox& boundary, double min_size, int capacity)
+  OctreeNode(const BoundingBox& boundary, double min_size, int capacity,
+    uint64_t morton_code = 1, int depth = 0, bool divided = false)
     : boundary_(boundary), min_size_(min_size), capacity_(capacity),
-      divided_(false)
+      morton_code_(morton_code), depth_(depth), divided_(divided)
   {}
   ~OctreeNode() = default;
   // 插入球体
@@ -42,10 +45,24 @@ public:
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
+  // 获取Morton编码
+  uint64_t getMortonCode() const { return morton_code_; }
+
+  // 获取节点深度
+  int getDepth() const { return depth_; }
+
 private:
   // 分割节点
   void subdivide();
   bool shouldSubdivide() const;
+  // 新增：Morton编码相关方法
+  uint64_t computeChildMortonCode(
+    int child_index) const; // 计算子节点的Morton编码
+  static uint64_t computeMortonCode(const Position& pos, const Position& min,
+    const Position& max, int max_depth); // 根据位置计算Morton编码
+  static void decodeMortonCode(uint64_t code, int depth, Position& min,
+    Position& max, const Position& root_min,
+    const Position& root_max); // 从Morton编码解码位置范围
 };
 
 } // namespace openmc
