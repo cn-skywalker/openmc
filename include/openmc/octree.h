@@ -17,14 +17,16 @@ namespace openmc {
 class OctreeNode {
 private:
   BoundingBox boundary_;                // 节点边界
+  double min_size_;                     // 最小分割尺寸
   int capacity_;                        // 节点容量
   std::vector<int32_t> spheres_indexs_; // 存储的球体的token（带正负号）
   std::vector<std::unique_ptr<OctreeNode>> children_; // 子节点
   bool divided_;                                      // 是否已分割
 
 public:
-  OctreeNode(const BoundingBox& boundary, int capacity)
-    : boundary_(boundary), capacity_(capacity), divided_(false)
+  OctreeNode(const BoundingBox& boundary, double min_size, int capacity)
+    : boundary_(boundary), min_size_(min_size), capacity_(capacity),
+      divided_(false)
   {}
   ~OctreeNode() = default;
   // 插入球体
@@ -43,9 +45,7 @@ public:
 private:
   // 分割节点
   void subdivide();
-  // 射线与BoundingBox相交检测
-  bool rayAABBIntersect(const Position& origin, const Position& direction,
-    const BoundingBox& aabb) const;
+  bool shouldSubdivide() const;
 };
 
 } // namespace openmc

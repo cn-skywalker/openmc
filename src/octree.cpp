@@ -26,6 +26,11 @@ bool OctreeNode::insert(const int32_t& sphere_token)
 
   // 如果节点已满且未分割，先分割
   if (!divided_) {
+    // 如果尺寸已经小于最小分割尺寸，不再分割，直接插入当前节点
+    if (!shouldSubdivide()) {
+      spheres_indexs_.push_back(sphere_token);
+      return true;
+    }
     subdivide();
 
     // 重要：将当前节点的球体重新分配到子节点
@@ -98,7 +103,7 @@ int32_t OctreeNode::queryPoint(const Position& point) const
 std::pair<int32_t, double> OctreeNode::queryRay(
   const Position& origin, const Position& direction, int32_t on_surface) const
 {
-  // 如果射线与节点边界不相交，返回无效结果-1
+  // 如果射线与节点边界不相交，返回无效结果
   if (!boundary_.rayIntersect(origin, direction)) {
     return {-1, std::numeric_limits<double>::max()};
   }
@@ -144,42 +149,42 @@ void OctreeNode::subdivide()
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, min.z),
                                    Position(center.x, center.y, center.z)),
-      capacity_));
+      min_size_, capacity_));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(center.x, min.y, min.z),
                                    Position(max.x, center.y, center.z)),
-      capacity_));
+      min_size_, capacity_));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, center.y, min.z),
                                    Position(center.x, max.y, center.z)),
-      capacity_));
+      min_size_, capacity_));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, min.z), Position(max.x, max.y, center.z)),
-    capacity_));
+    min_size_, capacity_));
 
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, center.z),
                                    Position(center.x, center.y, max.z)),
-      capacity_));
+      min_size_, capacity_));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, min.y, center.z), Position(max.x, center.y, max.z)),
-    capacity_));
+    min_size_, capacity_));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(min.x, center.y, center.z), Position(center.x, max.y, max.z)),
-    capacity_));
+    min_size_, capacity_));
 
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, center.z), Position(max.x, max.y, max.z)),
-    capacity_));
+    min_size_, capacity_));
 
   divided_ = true;
 }
@@ -229,6 +234,13 @@ void OctreeNode::printTree(int depth, bool showAll) const
       children_[i]->printTree(depth + 1);
     }
   }
+}
+
+bool OctreeNode::shouldSubdivide() const
+{
+  // 检查边界尺寸是否大于最小分割尺寸
+  Position size = boundary_.getSize();
+  return (size.x > min_size_ && size.y > min_size_ && size.z > min_size_);
 }
 
 } // namespace openmc

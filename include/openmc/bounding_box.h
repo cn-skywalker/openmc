@@ -78,6 +78,8 @@ public:
   Position getCenter() const;
   Position getSize() const;
   bool rayIntersect(const Position& origin, const Position& direction) const;
+  // 计算射线到边界框的最近相交距离
+  double rayDistance(const Position& origin, const Position& direction) const;
 };
 
 } // namespace openmc

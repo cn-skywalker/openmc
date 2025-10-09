@@ -43,6 +43,12 @@ Position BoundingBox::getSize() const
 bool BoundingBox::rayIntersect(
   const Position& origin, const Position& direction) const
 {
+  return rayDistance(origin, direction) < std::numeric_limits<double>::max();
+}
+
+double BoundingBox::rayDistance(
+  const Position& origin, const Position& direction) const
+{
   double tmin = 0.0; // 射线 t >= 0
   double tmax = std::numeric_limits<double>::max();
 
@@ -54,7 +60,7 @@ bool BoundingBox::rayIntersect(
     if (std::abs(dir) < FP_PRECISION) {
       // 射线平行于该轴
       if (origin[i] < minVal || origin[i] > maxVal) {
-        return false; // 不在范围内，不相交
+        return std::numeric_limits<double>::max(); // 不相交
       }
       // 否则不限制 t 范围，跳过
     } else {
@@ -70,12 +76,12 @@ bool BoundingBox::rayIntersect(
       tmax = std::min(t1, tmax);
 
       if (tmax <= tmin) {
-        return false;
+        return std::numeric_limits<double>::max(); // 不相交
       }
     }
   }
 
-  return true;
+  return tmin; // 返回最近的相交距离
 }
 
 } // namespace openmc

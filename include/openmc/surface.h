@@ -39,8 +39,8 @@ public:
   std::string name_;                 //!< User-defined name
   unique_ptr<BoundaryCondition> bc_; //!< Boundary condition
   bool surf_source_ {false}; //!< Activate source banking for the surface?
-  int triso_base_index_;
-  int triso_particle_index_ = -1;
+  int triso_base_index_; //!< token of the triso base this surface belongs to
+  int triso_particle_index_ = -1; //!< id of the triso particle this surface belongs to
   bool is_triso_surface_ = false;
 
   explicit Surface(pugi::xml_node surf_node);
