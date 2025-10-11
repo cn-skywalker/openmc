@@ -45,9 +45,11 @@ bool OctreeNode::insert(const int32_t& sphere_token)
           inserted = true;
         }
       }
-      // 如果球体无法插入任何子节点，留在当前节点
+      // 如果球体无法插入任何子节点，则进行报错
       if (!inserted) {
-        spheres_indexs_.push_back(token);
+        fatal_error("Error in OctreeNode::insert: could not reinsert existing "
+                    "sphere {} into child nodes.",
+          model::surfaces[abs(token) - 1]->id_);
       }
     }
   }
@@ -101,6 +103,80 @@ int32_t OctreeNode::queryPoint(const Position& point) const
 }
 
 std::pair<int32_t, double> OctreeNode::queryRay(
+  const Position& origin, const Position& direction, int32_t on_surface) const
+{
+  Position current_position = origin; // 步骤（1）：令current_position=origin
+  double minT = std::numeric_limits<double>::max();
+  int32_t result_sphere = -1;
+
+  // 设置最大迭代次数防止无限循环
+  const int max_iterations = 1000;
+  int iteration_count = 0;
+
+  while (iteration_count++ < max_iterations) {
+    // 步骤（2）：根据current_position定位当前叶子节点
+    const OctreeNode* leaf_node = findLeafNode(current_position);
+    if (!leaf_node) {
+      // 如果不存在叶子节点，向前移动一个很小的距离再次判断
+      current_position = current_position + direction * FP_PRECISION;
+      leaf_node = findLeafNode(current_position);
+    }
+
+    if (!leaf_node) {
+      // 如果不存在叶子节点，返回无穷大
+      return {-1, std::numeric_limits<double>::max()};
+    }
+
+    // 检测该节点中所有的颗粒是否相交
+    bool found_intersection = false;
+    for (const auto& sphere_token : leaf_node->spheres_indexs_) {
+      bool coincident = (std::abs(sphere_token) == std::abs(on_surface));
+      double t = model::surfaces[abs(sphere_token) - 1]->distance(
+        origin, direction, coincident);
+
+      if (t > 0 && t < minT) {
+        minT = t;
+        result_sphere = sphere_token;
+        found_intersection = true;
+      }
+    }
+
+    // 步骤（3）：如果有颗粒相交则返回
+    if (found_intersection) {
+      return {result_sphere, minT};
+    }
+
+    // 步骤（4）：计算沿着射线方向从current_position到当前叶子节点出口的距离
+    double exit_distance =
+      leaf_node->getExitDistance(current_position, direction);
+
+    // 如果没有出口，向前移动一小段距离，再次定位叶子节点
+    if (exit_distance >= std::numeric_limits<double>::max()) {
+      current_position = current_position + direction * FP_PRECISION;
+      leaf_node = findLeafNode(current_position);
+      if(!leaf_node){
+        return {-1, std::numeric_limits<double>::max()};
+      }
+      exit_distance = leaf_node->getExitDistance(current_position, direction);
+    }
+
+    if (exit_distance >= std::numeric_limits<double>::max()) {
+      // 没有出口，射线离开八叉树边界
+      return {-1, std::numeric_limits<double>::max()};
+    }
+
+    // 将current_position移动到出口位置
+    current_position =
+      current_position + direction * (exit_distance + FP_COINCIDENT);
+
+    // 步骤（5）：回到步骤2（通过循环实现）
+  }
+
+  // 达到最大迭代次数，返回无交点
+  return {-1, std::numeric_limits<double>::max()};
+}
+
+std::pair<int32_t, double> OctreeNode::queryRayold(
   const Position& origin, const Position& direction, int32_t on_surface) const
 {
   // 如果射线与节点边界不相交，返回无效结果
@@ -238,59 +314,47 @@ void OctreeNode::printTree(int depth, bool showAll) const
   }
 }
 
+const OctreeNode* OctreeNode::findLeafNode(const Position& point) const
+{
+  // 如果点不在节点边界内，返回 nullptr
+  if (!boundary_.contains(point)) {
+    return nullptr;
+  }
+
+  // 如果当前节点是叶子节点（未分割），返回当前节点
+  if (!divided_) {
+    return this;
+  }
+
+  // 如果节点已分割，递归查询子节点
+  for (const auto& child : children_) {
+    const OctreeNode* result = child->findLeafNode(point);
+    if (result != nullptr) {
+      return result;
+    }
+  }
+
+  // 理论上不会执行到这里，因为点应该在某个子节点中
+  return nullptr;
+}
+
+double OctreeNode::getExitDistance(
+  const Position& origin, const Position& direction) const
+{
+  auto [t_enter, t_exit] =
+    boundary_.rayIntersectionDistances(origin, direction);
+
+  if (t_exit < std::numeric_limits<double>::max()) {
+    return t_exit;
+  }
+
+  return std::numeric_limits<double>::max();
+}
+
 uint64_t OctreeNode::computeChildMortonCode(int child_index) const
 {
   // 子节点的Morton编码 = 父节点编码左移3位 + 子节点索引
   return (morton_code_ << 3) | (child_index & 0x7);
-}
-
-uint64_t OctreeNode::computeMortonCode(
-  const Position& pos, const Position& min, const Position& max, int max_depth)
-{
-  // 将位置归一化到[0,1]范围
-  double x_norm = (pos.x - min.x) / (max.x - min.x);
-  double y_norm = (pos.y - min.y) / (max.y - min.y);
-  double z_norm = (pos.z - min.z) / (max.z - min.z);
-
-  // 将归一化坐标映射到整数空间
-  uint32_t x_int = static_cast<uint32_t>(x_norm * ((1 << max_depth) - 1));
-  uint32_t y_int = static_cast<uint32_t>(y_norm * ((1 << max_depth) - 1));
-  uint32_t z_int = static_cast<uint32_t>(z_norm * ((1 << max_depth) - 1));
-
-  // 计算Morton编码（交错位）
-  uint64_t code = 0;
-  for (int i = 0; i < max_depth; ++i) {
-    code |= ((x_int >> i) & 1) << (3 * i);
-    code |= ((y_int >> i) & 1) << (3 * i + 1);
-    code |= ((z_int >> i) & 1) << (3 * i + 2);
-  }
-
-  return code;
-}
-
-void OctreeNode::decodeMortonCode(uint64_t code, int depth, Position& min,
-  Position& max, const Position& root_min, const Position& root_max)
-{
-  double size_x = (root_max.x - root_min.x) / (1 << depth);
-  double size_y = (root_max.y - root_min.y) / (1 << depth);
-  double size_z = (root_max.z - root_min.z) / (1 << depth);
-
-  uint64_t temp_code = code;
-  int x_idx = 0, y_idx = 0, z_idx = 0;
-
-  for (int i = 0; i < depth; ++i) {
-    x_idx |= (temp_code & 1) << i;
-    y_idx |= ((temp_code >> 1) & 1) << i;
-    z_idx |= ((temp_code >> 2) & 1) << i;
-    temp_code >>= 3;
-  }
-
-  min.x = root_min.x + x_idx * size_x;
-  min.y = root_min.y + y_idx * size_y;
-  min.z = root_min.z + z_idx * size_z;
-  max.x = min.x + size_x;
-  max.y = min.y + size_y;
-  max.z = min.z + size_z;
 }
 
 bool OctreeNode::shouldSubdivide() const

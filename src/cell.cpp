@@ -790,10 +790,17 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
     }
   }
 
-  // 判断八叉树搜索结果是否与网格搜索结果一致(后续可删除)
-  // if (i_surf != std::numeric_limits<int32_t>::max() && octree_result.first ==
-  // -1) {
-  //   warning(fmt::format("八叉树没有找到交点"));
+  // (调试用)判断八叉树搜索结果是否与网格搜索结果一致(后续可删除)
+  // if (vl_octree_) {
+  //   // 首先使用八叉树查询最近的球体交点
+  //   auto octree_result = vl_octree_->queryRay(r, u, on_surface);
+
+  //   if (std::abs(octree_result.second - min_dist) >= FP_PRECISION ||
+  //       i_surf != -octree_result.first) {
+  //     warning(
+  //       fmt::format("八叉树没有找到交点,但是网格找到了交点,token为{}", i_surf));
+  //     octree_result = vl_octree_->queryRay(r, u, on_surface);
+  //   }
   // }
 
   return {min_dist, i_surf};

@@ -84,4 +84,45 @@ double BoundingBox::rayDistance(
   return tmin; // 返回最近的相交距离
 }
 
+// 在 bounding_box.cpp 中添加以下实现：
+
+std::pair<double, double> BoundingBox::rayIntersectionDistances(
+  const Position& origin, const Position& direction) const
+{
+  double tmin = 0.0;
+  double tmax = std::numeric_limits<double>::max();
+
+  for (int i = 0; i < 3; ++i) {
+    double dir = direction[i];
+    double minVal = min()[i];
+    double maxVal = max()[i];
+
+    if (std::abs(dir) < FP_PRECISION) {
+      // 射线平行于该轴
+      if (origin[i] < minVal || origin[i] > maxVal) {
+        return {std::numeric_limits<double>::max(),
+          std::numeric_limits<double>::max()}; // 不相交
+      }
+    } else {
+      double invD = 1.0 / dir;
+      double t0 = (minVal - origin[i]) * invD;
+      double t1 = (maxVal - origin[i]) * invD;
+
+      if (invD < 0.0) {
+        std::swap(t0, t1);
+      }
+
+      tmin = std::max(t0, tmin);
+      tmax = std::min(t1, tmax);
+
+      if (tmax <= tmin) {
+        return {std::numeric_limits<double>::max(),
+          std::numeric_limits<double>::max()};
+      }
+    }
+  }
+
+  return {tmin, tmax};
+}
+
 } // namespace openmc

@@ -42,6 +42,9 @@ public:
   std::pair<int32_t, double> queryRay(const Position& origin,
     const Position& direction, int32_t on_surface) const;
 
+  std::pair<int32_t, double> queryRayold(const Position& origin,
+    const Position& direction, int32_t on_surface) const;
+
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
@@ -51,6 +54,13 @@ public:
   // 获取节点深度
   int getDepth() const { return depth_; }
 
+  // 新增：查询位置所在的叶子节点
+  const OctreeNode* findLeafNode(const Position& point) const;
+
+  // 新增：计算射线与当前节点边界的出口距离
+  double getExitDistance(
+    const Position& origin, const Position& direction) const;
+
 private:
   // 分割节点
   void subdivide();
@@ -58,11 +68,6 @@ private:
   // 新增：Morton编码相关方法
   uint64_t computeChildMortonCode(
     int child_index) const; // 计算子节点的Morton编码
-  static uint64_t computeMortonCode(const Position& pos, const Position& min,
-    const Position& max, int max_depth); // 根据位置计算Morton编码
-  static void decodeMortonCode(uint64_t code, int depth, Position& min,
-    Position& max, const Position& root_min,
-    const Position& root_max); // 从Morton编码解码位置范围
 };
 
 } // namespace openmc

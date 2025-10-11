@@ -80,6 +80,10 @@ public:
   bool rayIntersect(const Position& origin, const Position& direction) const;
   // 计算射线到边界框的最近相交距离
   double rayDistance(const Position& origin, const Position& direction) const;
+
+    // 新增：计算射线与边界框的进出点距离
+  std::pair<double, double> rayIntersectionDistances(
+    const Position& origin, const Position& direction) const;
 };
 
 } // namespace openmc
