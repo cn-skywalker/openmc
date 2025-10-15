@@ -64,7 +64,9 @@ bool OctreeNode::insert(const int32_t& sphere_token)
 
   // 如果球体无法插入任何子节点，留在当前节点
   if (!inserted_to_child) {
-    spheres_indexs_.push_back(sphere_token);
+    fatal_error("Error in OctreeNode::insert: could not reinsert existing "
+                "sphere {} into child nodes.",
+      model::surfaces[abs(sphere_token) - 1]->id_);
   }
 
   return true;
@@ -106,74 +108,52 @@ std::pair<int32_t, double> OctreeNode::queryRay(
   const Position& origin, const Position& direction, int32_t on_surface) const
 {
   Position current_position = origin; // 步骤（1）：令current_position=origin
-  double minT = std::numeric_limits<double>::max();
-  int32_t result_sphere = -1;
+  double minT = INFTY;
+  int32_t result_sphere = std::numeric_limits<int32_t>::max();
+  OctreeNode* old_leaf_node = nullptr;
+  bool if_stuck = false;
 
-  // 设置最大迭代次数防止无限循环
-  const int max_iterations = 1000;
-  int iteration_count = 0;
-
-  while (iteration_count++ < max_iterations) {
-    // 步骤（2）：根据current_position定位当前叶子节点
+  while (true) {
+    // 查找当前位置所在的叶子节点
     const OctreeNode* leaf_node = findLeafNode(current_position);
-    if (!leaf_node) {
-      // 如果不存在叶子节点，向前移动一个很小的距离再次判断
-      current_position = current_position + direction * FP_PRECISION;
+    if (leaf_node == nullptr || leaf_node == old_leaf_node) {
+      // 如果不在任何叶子节点内，向前移动一小段距离
+      current_position += direction * FP_COINCIDENT;
+      // 再次查找，如果还是不在则退出
       leaf_node = findLeafNode(current_position);
-    }
-
-    if (!leaf_node) {
-      // 如果不存在叶子节点，返回无穷大
-      return {-1, std::numeric_limits<double>::max()};
-    }
-
-    // 检测该节点中所有的颗粒是否相交
-    bool found_intersection = false;
-    for (const auto& sphere_token : leaf_node->spheres_indexs_) {
-      bool coincident = (std::abs(sphere_token) == std::abs(on_surface));
-      double t = model::surfaces[abs(sphere_token) - 1]->distance(
-        origin, direction, coincident);
-
-      if (t > 0 && t < minT) {
-        minT = t;
-        result_sphere = sphere_token;
-        found_intersection = true;
+      if (leaf_node == nullptr) {
+        break;
+      }
+      if_stuck = leaf_node == old_leaf_node;
+      if (if_stuck) {
+        warning(
+          "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
       }
     }
-
-    // 步骤（3）：如果有颗粒相交则返回
-    if (found_intersection) {
-      return {result_sphere, minT};
+    // 如果没有堵在同一个叶子节点，查找当前位置的叶子节点内的球体
+    if (!if_stuck) {
+      for (const auto& sphere_token : leaf_node->spheres_indexs_) {
+        bool coincident {std::abs(sphere_token) == std::abs(on_surface)};
+        double t = model::surfaces[abs(sphere_token) - 1]->distance(
+          origin, direction, coincident);
+        if (t > 0 && t < minT) {
+          minT = t;
+          result_sphere = sphere_token; // 记录球体token
+        }
+      }
     }
-
-    // 步骤（4）：计算沿着射线方向从current_position到当前叶子节点出口的距离
+    // 计算射线与当前节点边界的出口距离
     double exit_distance =
       leaf_node->getExitDistance(current_position, direction);
-
-    // 如果没有出口，向前移动一小段距离，再次定位叶子节点
-    if (exit_distance >= std::numeric_limits<double>::max()) {
-      current_position = current_position + direction * FP_PRECISION;
-      leaf_node = findLeafNode(current_position);
-      if(!leaf_node){
-        return {-1, std::numeric_limits<double>::max()};
-      }
-      exit_distance = leaf_node->getExitDistance(current_position, direction);
+    // 如果出口距离无限大，说明射线不会再进入其他节点，退出循环
+    if (exit_distance == INFTY) {
+      break;
     }
-
-    if (exit_distance >= std::numeric_limits<double>::max()) {
-      // 没有出口，射线离开八叉树边界
-      return {-1, std::numeric_limits<double>::max()};
-    }
-
-    // 将current_position移动到出口位置
-    current_position =
-      current_position + direction * (exit_distance + FP_COINCIDENT);
-
-    // 步骤（5）：回到步骤2（通过循环实现）
+    // 步骤（5）：更新current_position
+    current_position += direction * (exit_distance + FP_COINCIDENT);
+    old_leaf_node = const_cast<OctreeNode*>(leaf_node);
   }
-
-  // 达到最大迭代次数，返回无交点
-  return {-1, std::numeric_limits<double>::max()};
+  return {result_sphere, minT};
 }
 
 std::pair<int32_t, double> OctreeNode::queryRayold(
@@ -202,7 +182,7 @@ std::pair<int32_t, double> OctreeNode::queryRayold(
   // 检查子节点
   if (divided_) {
     for (const auto& child : children_) {
-      auto childResult = child->queryRay(origin, direction, on_surface);
+      auto childResult = child->queryRayold(origin, direction, on_surface);
       if (childResult.first != -1 && childResult.second < minT) {
         minT = childResult.second;
         result = childResult;
@@ -224,6 +204,7 @@ void OctreeNode::subdivide()
 
   // 统一使用min/max/center来定义边界，确保无重叠无遗漏
   // 为每个子节点计算Morton编码
+
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, min.z),
                                    Position(center.x, center.y, center.z)),
@@ -314,6 +295,47 @@ void OctreeNode::printTree(int depth, bool showAll) const
   }
 }
 
+std::vector<const OctreeNode*> OctreeNode::findLeafNodesContainingSphere(
+  int32_t sphere_token) const
+{
+  std::vector<const OctreeNode*> result;
+
+  // 检查当前节点是否包含该球体
+  bool contains_sphere = false;
+  for (const auto& token : spheres_indexs_) {
+    if (token == sphere_token) {
+      contains_sphere = true;
+      break;
+    }
+  }
+
+  // 如果当前节点是叶子节点且包含该球体，添加到结果
+  if (!divided_ && contains_sphere) {
+    result.push_back(this);
+  }
+
+  // 如果节点已分割，递归检查子节点
+  if (divided_) {
+    for (const auto& child : children_) {
+      auto child_results = child->findLeafNodesContainingSphere(sphere_token);
+      result.insert(result.end(), child_results.begin(), child_results.end());
+    }
+  }
+  std::cout << "Sphere " << sphere_token << " is contained in ";
+
+  std::cout << "Sphere " << sphere_token << " is contained in " << result.size()
+            << " leaf nodes:\n";
+  for (const auto* node : result) {
+    Position center = node->boundary_.getCenter();
+    Position size = node->boundary_.getSize();
+    std::cout << "  Leaf node at (" << center.x << ", " << center.y << ", "
+              << center.z << ") size (" << size.x << ", " << size.y << ", "
+              << size.z << ") depth=" << node->getDepth() << "\n";
+  }
+
+  return result;
+}
+
 const OctreeNode* OctreeNode::findLeafNode(const Position& point) const
 {
   // 如果点不在节点边界内，返回 nullptr
@@ -321,21 +343,31 @@ const OctreeNode* OctreeNode::findLeafNode(const Position& point) const
     return nullptr;
   }
 
-  // 如果当前节点是叶子节点（未分割），返回当前节点
-  if (!divided_) {
-    return this;
-  }
+  const OctreeNode* current = this;
 
-  // 如果节点已分割，递归查询子节点
-  for (const auto& child : children_) {
-    const OctreeNode* result = child->findLeafNode(point);
-    if (result != nullptr) {
-      return result;
+  // 迭代向下查找，直到叶子节点
+  while (current->divided_) {
+    Position center = current->boundary_.getCenter();
+
+    // 根据点相对于中心的位置确定子节点索引
+    int child_index = 0;
+    if (point.x >= center.x)
+      child_index |= 1; // x 轴：0=左, 1=右
+    if (point.y >= center.y)
+      child_index |= 2; // y 轴：0=下, 1=上
+    if (point.z >= center.z)
+      child_index |= 4; // z 轴：0=前, 1=后
+
+    // 直接访问对应的子节点
+    current = current->children_[child_index].get();
+
+    // 安全检查：如果子节点为空，返回当前节点
+    if (current == nullptr) {
+      return const_cast<OctreeNode*>(this);
     }
   }
 
-  // 理论上不会执行到这里，因为点应该在某个子节点中
-  return nullptr;
+  return current;
 }
 
 double OctreeNode::getExitDistance(

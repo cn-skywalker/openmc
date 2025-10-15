@@ -42,12 +42,16 @@ public:
   std::pair<int32_t, double> queryRay(const Position& origin,
     const Position& direction, int32_t on_surface) const;
 
+  // 旧版本的queryRay函数，保留以备对比(后续可删除)
   std::pair<int32_t, double> queryRayold(const Position& origin,
     const Position& direction, int32_t on_surface) const;
 
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
+  // 新增：查找包含指定球体的所有叶子节点（用于调试）
+  std::vector<const OctreeNode*> findLeafNodesContainingSphere(
+    int32_t sphere_token) const;
   // 获取Morton编码
   uint64_t getMortonCode() const { return morton_code_; }
 
