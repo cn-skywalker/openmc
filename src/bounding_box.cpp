@@ -86,11 +86,12 @@ double BoundingBox::rayDistance(
 
 // 在 bounding_box.cpp 中添加以下实现：
 
-std::pair<double, double> BoundingBox::rayIntersectionDistances(
+std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
   const Position& origin, const Position& direction) const
 {
   double tmin = 0.0;
   double tmax = std::numeric_limits<double>::max();
+  BoxFace exit_face = BoxFace::NONE; // 初始化出口面
 
   for (int i = 0; i < 3; ++i) {
     double dir = direction[i];
@@ -100,8 +101,7 @@ std::pair<double, double> BoundingBox::rayIntersectionDistances(
     if (std::abs(dir) < FP_PRECISION) {
       // 射线平行于该轴
       if (origin[i] < minVal || origin[i] > maxVal) {
-        return {std::numeric_limits<double>::max(),
-          std::numeric_limits<double>::max()}; // 不相交
+        return {BoxFace::NONE, std::numeric_limits<double>::max()}; // 不相交
       }
     } else {
       double invD = 1.0 / dir;
@@ -112,17 +112,31 @@ std::pair<double, double> BoundingBox::rayIntersectionDistances(
         std::swap(t0, t1);
       }
 
-      tmin = std::max(t0, tmin);
-      tmax = std::min(t1, tmax);
+      // 更新 tmin (入口)
+      if (t0 > tmin) {
+        tmin = t0;
+      }
+
+      // 更新 tmax (出口) 并记录是哪个面
+      if (t1 < tmax) {
+        tmax = t1;
+        // 根据当前轴和方向，确定出口面
+        if (i == 0) { // X轴
+          exit_face = (dir > 0) ? BoxFace::MAX_X : BoxFace::MIN_X;
+        } else if (i == 1) { // Y轴
+          exit_face = (dir > 0) ? BoxFace::MAX_Y : BoxFace::MIN_Y;
+        } else if (i == 2) { // Z轴
+          exit_face = (dir > 0) ? BoxFace::MAX_Z : BoxFace::MIN_Z;
+        }
+      }
 
       if (tmax <= tmin) {
-        return {std::numeric_limits<double>::max(),
-          std::numeric_limits<double>::max()};
+        return {BoxFace::NONE, std::numeric_limits<double>::max()};
       }
     }
   }
 
-  return {tmin, tmax};
+  return {exit_face, tmax};
 }
 
 } // namespace openmc

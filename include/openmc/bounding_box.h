@@ -8,6 +8,16 @@
 
 namespace openmc {
 
+enum class BoxFace {
+  MIN_X,
+  MAX_X,
+  MIN_Y,
+  MAX_Y,
+  MIN_Z,
+  MAX_Z,
+  NONE // 不相交或射线在盒子内部
+};
+
 //==============================================================================
 //! Coordinates for an axis-aligned cuboid that bounds a geometric object.
 //==============================================================================
@@ -81,8 +91,8 @@ public:
   // 计算射线到边界框的最近相交距离
   double rayDistance(const Position& origin, const Position& direction) const;
 
-    // 新增：计算射线与边界框的进出点距离
-  std::pair<double, double> rayIntersectionDistances(
+  // 新增：计算射线与边界框的进出点距离
+  std::pair<BoxFace, double> rayIntersectionDistances(
     const Position& origin, const Position& direction) const;
 };
 
