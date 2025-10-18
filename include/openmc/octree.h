@@ -62,8 +62,9 @@ public:
   const OctreeNode* findLeafNode(const Position& point) const;
 
   // 新增：计算射线与当前节点边界的出口距离
-  double getExitDistance(
+  std::pair<BoxFace, double> getExitDistance(
     const Position& origin, const Position& direction) const;
+  std::pair<uint64_t, int> deriveNextNodeMorton(BoxFace exit_face) const;
 
 private:
   // 分割节点
@@ -72,7 +73,12 @@ private:
   // 新增：Morton编码相关方法
   uint64_t computeChildMortonCode(
     int child_index) const; // 计算子节点的Morton编码
+  void buildLeafMap(OctreeNode* node);
 };
+
+namespace model {
+extern std::unordered_map<uint64_t, OctreeNode*> leaf_nodes_map;
+} // namespace model
 
 } // namespace openmc
 #endif // OCTREE_H

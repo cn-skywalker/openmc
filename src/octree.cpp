@@ -11,6 +11,10 @@
 #include <openmc/octree.h>
 
 namespace openmc {
+namespace model {
+std::unordered_map<uint64_t, OctreeNode*> leaf_nodes_map;
+} // namespace model
+
 bool OctreeNode::insert(const int32_t& sphere_token)
 {
   // 检查球体是否在节点边界内
@@ -112,6 +116,7 @@ std::pair<int32_t, double> OctreeNode::queryRay(
   int32_t result_sphere = std::numeric_limits<int32_t>::max();
   OctreeNode* old_leaf_node = nullptr;
   bool if_stuck = false;
+  BoxFace exit_face = BoxFace::NONE;
 
   while (true) {
     // 查找当前位置所在的叶子节点
@@ -143,9 +148,10 @@ std::pair<int32_t, double> OctreeNode::queryRay(
       }
     }
     // 计算射线与当前节点边界的出口距离
-    double exit_distance =
+    auto [exit_face1, exit_distance] =
       leaf_node->getExitDistance(current_position, direction);
     // 如果出口距离无限大，说明射线不会再进入其他节点，退出循环
+    exit_face = exit_face1;
     if (exit_distance == INFTY) {
       break;
     }
@@ -203,43 +209,52 @@ void OctreeNode::subdivide()
   int child_depth = depth_ + 1;
 
   // 统一使用min/max/center来定义边界，确保无重叠无遗漏
-  // 为每个子节点计算Morton编码
+  // 为每个子节点计算Morton编码，右手系建模
+  // 正向为1，负向为0，编码顺序为zyx
 
+  // 索引 0: 左-下-前 (000)
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, min.z),
                                    Position(center.x, center.y, center.z)),
       min_size_, capacity_, computeChildMortonCode(0), child_depth));
 
+  // 索引 1: 右-下-前 (001)
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(center.x, min.y, min.z),
                                    Position(max.x, center.y, center.z)),
       min_size_, capacity_, computeChildMortonCode(1), child_depth));
 
+  // 索引 2: 左-上-前 (010)
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, center.y, min.z),
                                    Position(center.x, max.y, center.z)),
       min_size_, capacity_, computeChildMortonCode(2), child_depth));
 
+  // 索引 3: 右-上-前 (011)
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, min.z), Position(max.x, max.y, center.z)),
     min_size_, capacity_, computeChildMortonCode(3), child_depth));
 
+  // 索引 4: 左-下-后 (100)
   children_.push_back(
     std::make_unique<OctreeNode>(BoundingBox(Position(min.x, min.y, center.z),
                                    Position(center.x, center.y, max.z)),
       min_size_, capacity_, computeChildMortonCode(4), child_depth));
 
+  // 索引 5: 右-下-后 (101)
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, min.y, center.z), Position(max.x, center.y, max.z)),
     min_size_, capacity_, computeChildMortonCode(5), child_depth));
 
+  // 索引 6: 左-上-后 (110)
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(min.x, center.y, center.z), Position(center.x, max.y, max.z)),
     min_size_, capacity_, computeChildMortonCode(6), child_depth));
 
+  // 索引 7: 右-上-后 (111)
   children_.push_back(std::make_unique<OctreeNode>(
     BoundingBox(
       Position(center.x, center.y, center.z), Position(max.x, max.y, max.z)),
@@ -370,17 +385,10 @@ const OctreeNode* OctreeNode::findLeafNode(const Position& point) const
   return current;
 }
 
-double OctreeNode::getExitDistance(
+std::pair<BoxFace, double> OctreeNode::getExitDistance(
   const Position& origin, const Position& direction) const
 {
-  auto [t_enter, t_exit] =
-    boundary_.rayIntersectionDistances(origin, direction);
-
-  if (t_exit < std::numeric_limits<double>::max()) {
-    return t_exit;
-  }
-
-  return std::numeric_limits<double>::max();
+  return boundary_.rayIntersectionDistances(origin, direction);
 }
 
 uint64_t OctreeNode::computeChildMortonCode(int child_index) const
@@ -396,4 +404,39 @@ bool OctreeNode::shouldSubdivide() const
   return (size.x > min_size_ && size.y > min_size_ && size.z > min_size_);
 }
 
+std::pair<uint64_t, int> OctreeNode::deriveNextNodeMorton(
+  BoxFace exit_face) const
+{
+  uint64_t x_code;
+  uint64_t y_code;
+  uint64_t z_code;
+  for (int i = 0; i < depth_; ++i) {
+    // 1. 提取当前 3 位组中的 x, y, z 位
+    // (morton_code >> (3 * i)) 将当前组移动到最低位
+    // & 0x1 (即 & 1) 提取最低位
+    uint64_t x_bit = (morton_code_ >> (3 * i)) & 0x1;
+    uint64_t y_bit = (morton_code_ >> (3 * i + 1)) & 0x1;
+    uint64_t z_bit = (morton_code_ >> (3 * i + 2)) & 0x1;
+
+    // 2. 将提取出的位设置到结果码的正确位置上
+    // result.x | x_bit 将位放入
+    // << i 将位移动到第 i 位
+    x_code |= (x_bit << i);
+    y_code |= (y_bit << i);
+    z_code |= (z_bit << i);
+  }
+  
+
+}
+
+void OctreeNode::buildLeafMap(OctreeNode* node)
+{
+  if (!node->divided_) {
+    model::leaf_nodes_map[node->morton_code_] = node;
+  } else {
+    for (auto& child : node->children_) {
+      buildLeafMap(child.get());
+    }
+  }
+}
 } // namespace openmc
