@@ -600,8 +600,10 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
       vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+      buildLeafMap(vl_octree_);
+
     }
-  }
+    }
 
   if (triso_particle_) {
     if (rpn.size() != 1) {
@@ -692,10 +694,11 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
 {
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
+  double max_dis = p->collision_distance();
 
   if (vl_octree_) {
     // 首先使用八叉树查询最近的球体交点
-    auto octree_result = vl_octree_->queryRay(r, u, on_surface);
+    auto octree_result = vl_octree_->queryRay(r, u, on_surface, max_dis);
     if (octree_result.first != -1) {
       // 八叉树找到了碰撞距离
       double octree_dist = octree_result.second;
@@ -710,7 +713,6 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
     }
   }
 
-  double max_dis = p->collision_distance();
   double tol_dis = 0;
   vector<double> dis_to_bou(3), dis_to_bou_max(3);
   double u_value = sqrt(pow(u.x, 2) + pow(u.y, 2) +
@@ -798,7 +800,8 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
   //   if (std::abs(octree_result.second - min_dist) >= FP_PRECISION ||
   //       i_surf != -octree_result.first) {
   //     warning(
-  //       fmt::format("八叉树没有找到交点,但是网格找到了交点,token为{}", i_surf));
+  //       fmt::format("八叉树没有找到交点,但是网格找到了交点,token为{}",
+  //       i_surf));
   //     octree_result = vl_octree_->queryRay(r, u, on_surface);
   //   }
   // }

@@ -15,7 +15,7 @@ namespace openmc {
 
 // 八叉树节点类
 class OctreeNode {
-private:
+public:
   BoundingBox boundary_;                // 节点边界
   double min_size_;                     // 最小分割尺寸
   int capacity_;                        // 节点容量
@@ -25,7 +25,6 @@ private:
   uint64_t morton_code_;                              // Morton编码
   int depth_;                                         // 节点深度
 
-public:
   OctreeNode(const BoundingBox& boundary, double min_size, int capacity,
     uint64_t morton_code = 1, int depth = 0, bool divided = false)
     : boundary_(boundary), min_size_(min_size), capacity_(capacity),
@@ -40,7 +39,8 @@ public:
 
   // 查询射线碰到的第一个球体，返回球体ID和交点（如果没有碰到任何球体返回-1）
   std::pair<int32_t, double> queryRay(const Position& origin,
-    const Position& direction, int32_t on_surface) const;
+    const Position& direction, int32_t on_surface,
+    double max_distance = INFTY) const;
 
   // 旧版本的queryRay函数，保留以备对比(后续可删除)
   std::pair<int32_t, double> queryRayold(const Position& origin,
@@ -64,6 +64,7 @@ public:
   // 新增：计算射线与当前节点边界的出口距离
   std::pair<BoxFace, double> getExitDistance(
     const Position& origin, const Position& direction) const;
+  // 新增：根据出口面推导下一个节点的Morton编码以及位深度
   std::pair<uint64_t, int> deriveNextNodeMorton(BoxFace exit_face) const;
 
 private:
@@ -73,9 +74,8 @@ private:
   // 新增：Morton编码相关方法
   uint64_t computeChildMortonCode(
     int child_index) const; // 计算子节点的Morton编码
-  void buildLeafMap(OctreeNode* node);
 };
-
+void buildLeafMap(OctreeNode* node);
 namespace model {
 extern std::unordered_map<uint64_t, OctreeNode*> leaf_nodes_map;
 } // namespace model

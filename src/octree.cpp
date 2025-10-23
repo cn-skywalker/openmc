@@ -108,31 +108,60 @@ int32_t OctreeNode::queryPoint(const Position& point) const
   return -1;
 }
 
-std::pair<int32_t, double> OctreeNode::queryRay(
-  const Position& origin, const Position& direction, int32_t on_surface) const
+std::pair<int32_t, double> OctreeNode::queryRay(const Position& origin,
+  const Position& direction, int32_t on_surface, double max_distance) const
 {
   Position current_position = origin; // 步骤（1）：令current_position=origin
   double minT = INFTY;
   int32_t result_sphere = std::numeric_limits<int32_t>::max();
-  OctreeNode* old_leaf_node = nullptr;
+  uint64_t old_morton_code = -1;
   bool if_stuck = false;
   BoxFace exit_face = BoxFace::NONE;
+  double total_distance = 0.0;
+  const OctreeNode* leaf_node = nullptr;
 
   while (true) {
-    // 查找当前位置所在的叶子节点
-    const OctreeNode* leaf_node = findLeafNode(current_position);
-    if (leaf_node == nullptr || leaf_node == old_leaf_node) {
-      // 如果不在任何叶子节点内，向前移动一小段距离
-      current_position += direction * FP_COINCIDENT;
-      // 再次查找，如果还是不在则退出
-      leaf_node = findLeafNode(current_position);
-      if (leaf_node == nullptr) {
-        break;
+    bool found = false; // 标记是否被找到了
+    // 先用morton码进行查找
+    if (old_morton_code != -1 && leaf_node != nullptr) {
+      auto [next_morton_code, next_depth] =
+        leaf_node->deriveNextNodeMorton(exit_face);
+
+      // 对深度进行循环回退，直到找到对应的叶子节点或无法回退为止
+      for (int depth = next_depth; depth > 0; depth--) {
+        uint64_t adjusted_code = next_morton_code >> (3 * (next_depth - depth));
+        auto it = model::leaf_nodes_map.find(adjusted_code);
+        if (it != model::leaf_nodes_map.end()) {
+          leaf_node = it->second;
+          if (leaf_node->divided_ == false) {
+            found = true;
+          }
+          break;
+        }
       }
-      if_stuck = leaf_node == old_leaf_node;
-      if (if_stuck) {
-        warning(
-          "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
+    }
+    if (!found) {
+      // 如果没找到，使用位置查找
+      // 查找当前位置所在的叶子节点
+      if (leaf_node == nullptr) {
+        leaf_node = findLeafNode(current_position);
+      } else {
+        leaf_node = leaf_node->findLeafNode(current_position);
+      }
+      if (leaf_node == nullptr ||
+          leaf_node->getMortonCode() == old_morton_code) {
+        // 如果不在任何叶子节点内，向前移动一小段距离
+        current_position += direction * FP_COINCIDENT;
+        // 再次全局查找，如果还是不在则退出
+        leaf_node = findLeafNode(current_position);
+        if (leaf_node == nullptr) {
+          break;
+        }
+        if_stuck = leaf_node->getMortonCode() == old_morton_code;
+        if (if_stuck) {
+          warning(
+            "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
+        }
       }
     }
     // 如果没有堵在同一个叶子节点，查找当前位置的叶子节点内的球体
@@ -157,7 +186,13 @@ std::pair<int32_t, double> OctreeNode::queryRay(
     }
     // 步骤（5）：更新current_position
     current_position += direction * (exit_distance + FP_COINCIDENT);
-    old_leaf_node = const_cast<OctreeNode*>(leaf_node);
+    total_distance += exit_distance + FP_COINCIDENT;
+    // 如果超过最大距离，退出循环
+    if (total_distance > max_distance) {
+      break;
+    }
+    // 更新old_morton_code
+    old_morton_code = leaf_node->getMortonCode();
   }
   return {result_sphere, minT};
 }
@@ -407,9 +442,9 @@ bool OctreeNode::shouldSubdivide() const
 std::pair<uint64_t, int> OctreeNode::deriveNextNodeMorton(
   BoxFace exit_face) const
 {
-  uint64_t x_code;
-  uint64_t y_code;
-  uint64_t z_code;
+  uint64_t x_code = 0;
+  uint64_t y_code = 0;
+  uint64_t z_code = 0;
   for (int i = 0; i < depth_; ++i) {
     // 1. 提取当前 3 位组中的 x, y, z 位
     // (morton_code >> (3 * i)) 将当前组移动到最低位
@@ -425,15 +460,49 @@ std::pair<uint64_t, int> OctreeNode::deriveNextNodeMorton(
     y_code |= (y_bit << i);
     z_code |= (z_bit << i);
   }
-  
+  // 3. 根据出口面调整坐标
+  switch (exit_face) {
+  case BoxFace::MIN_X:
+    x_code -= 1;
+    break;
+  case BoxFace::MAX_X:
+    x_code += 1;
+    break;
+  case BoxFace::MIN_Y:
+    y_code -= 1;
+    break;
+  case BoxFace::MAX_Y:
+    y_code += 1;
+    break;
+  case BoxFace::MIN_Z:
+    z_code -= 1;
+    break;
+  case BoxFace::MAX_Z:
+    z_code += 1;
+    break;
+  default:
+    break;
+  }
+  // 4. 重组 Morton 编码
+  uint64_t next_morton_code = 0;
+  for (int i = 0; i < depth_; ++i) {
+    uint64_t x_bit = (x_code >> i) & 0x1;
+    uint64_t y_bit = (y_code >> i) & 0x1;
+    uint64_t z_bit = (z_code >> i) & 0x1;
 
+    next_morton_code |= (x_bit << (3 * i));
+    next_morton_code |= (y_bit << (3 * i + 1));
+    next_morton_code |= (z_bit << (3 * i + 2));
+  }
+  // 加上头位的1
+  next_morton_code |= (1ULL << (3 * depth_));
+  return {next_morton_code, depth_};
 }
 
-void OctreeNode::buildLeafMap(OctreeNode* node)
+void buildLeafMap(OctreeNode* node)
 {
-  if (!node->divided_) {
-    model::leaf_nodes_map[node->morton_code_] = node;
-  } else {
+  model::leaf_nodes_map[node->getMortonCode()] = node;
+  if (node->divided_) {
     for (auto& child : node->children_) {
       buildLeafMap(child.get());
     }
