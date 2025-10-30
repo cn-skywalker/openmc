@@ -92,21 +92,21 @@ std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
   double tmin = 0.0;
   double tmax = std::numeric_limits<double>::max();
   BoxFace exit_face = BoxFace::NONE; // 初始化出口面
+  Position minVal = min();
+  Position maxVal = max();
 
   for (int i = 0; i < 3; ++i) {
     double dir = direction[i];
-    double minVal = min()[i];
-    double maxVal = max()[i];
 
     if (std::abs(dir) < FP_PRECISION) {
       // 射线平行于该轴
-      if (origin[i] < minVal || origin[i] > maxVal) {
+      if (origin[i] < minVal[i] || origin[i] > maxVal[i]) {
         return {BoxFace::NONE, std::numeric_limits<double>::max()}; // 不相交
       }
     } else {
       double invD = 1.0 / dir;
-      double t0 = (minVal - origin[i]) * invD;
-      double t1 = (maxVal - origin[i]) * invD;
+      double t0 = (minVal[i] - origin[i]) * invD;
+      double t1 = (maxVal[i] - origin[i]) * invD;
 
       if (invD < 0.0) {
         std::swap(t0, t1);
