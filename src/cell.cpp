@@ -698,7 +698,7 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
 
   if (vl_octree_) {
     // 首先使用八叉树查询最近的球体交点
-    auto octree_result = vl_octree_->queryRay(r, u, on_surface, max_dis);
+    auto octree_result = vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
     if (octree_result.first != -1) {
       // 八叉树找到了碰撞距离
       double octree_dist = octree_result.second;

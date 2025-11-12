@@ -24,6 +24,8 @@ public:
   bool divided_;                                      // 是否已分割
   uint64_t morton_code_;                              // Morton编码
   int depth_;                                         // 节点深度
+  mutable std::array<std::vector<OctreeNode*>, 6>
+    neighborsByFace; // 按面存储的邻居节点指针
 
   OctreeNode(const BoundingBox& boundary, double min_size, int capacity,
     uint64_t morton_code = 1, int depth = 0, bool divided = false)
@@ -38,9 +40,13 @@ public:
   int32_t queryPoint(const Position& point) const;
 
   // 查询射线碰到的第一个球体，返回球体ID和交点（如果没有碰到任何球体返回-1）
-  std::pair<int32_t, double> queryRay(const Position& origin,
+  std::pair<int32_t, double> queryRay_morton_code(const Position& origin,
     const Position& direction, int32_t on_surface,
     double max_distance = INFTY) const;
+
+  // 邻居列表版本
+  std::pair<int32_t, double> queryRay_Neighbor_search(const Position& origin,
+    const Position& direction, int32_t on_surface) const;
 
   // 旧版本的queryRay函数，保留以备对比(后续可删除)
   std::pair<int32_t, double> queryRayold(const Position& origin,
@@ -66,6 +72,24 @@ public:
     const Position& origin, const Position& direction) const;
   // 新增：根据出口面推导下一个节点的Morton编码以及位深度
   std::pair<uint64_t, int> deriveNextNodeMorton(BoxFace exit_face) const;
+
+  // 获取特定方向的邻居列表
+  std::vector<OctreeNode*>& getNeighbors(BoxFace face)
+  {
+    return neighborsByFace[static_cast<size_t>(face)];
+  }
+
+  // 获取特定方向的邻居列表 (const 版本)
+  const std::vector<OctreeNode*>& getNeighbors(BoxFace face) const
+  {
+    return neighborsByFace[static_cast<size_t>(face)];
+  }
+
+  // 添加一个邻居到指定方向
+  void addNeighbor(BoxFace face, OctreeNode* neighbor)
+  {
+    getNeighbors(face).push_back(neighbor);
+  }
 
 private:
   // 分割节点
