@@ -442,6 +442,30 @@ void OctreeNode::subdivide()
   divided_ = true;
 }
 
+void OctreeNode::printBasicInfo() const
+{
+  // 打印当前树结构的最深深度和叶子节点数量
+  int max_depth = 0;
+  std::function<void(const OctreeNode*, int)> traverse;
+  traverse = [&](const OctreeNode* node, int depth) {
+    if (!node->divided_) {
+
+      if (depth > max_depth) {
+        max_depth = depth;
+      }
+    } else {
+      for (const auto& child : node->children_) {
+        traverse(child.get(), depth + 1);
+      }
+    }
+  };
+  traverse(this, 0);
+
+  // 输出最深深度
+  write_message(fmt::format(
+    "Octree basic info: max depth={}, max capacity={}", max_depth, capacity_));
+}
+
 void OctreeNode::printTree(int depth, bool showAll) const
 {
   if (!showAll && spheres_indexs_.empty() && !divided_) {

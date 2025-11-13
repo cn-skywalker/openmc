@@ -599,11 +599,13 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
-      vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+      // vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+      write_message(
+        fmt::format("Virtual lattice octree for cell {} constructed.", id_));
+      vl_octree_->printBasicInfo(); // 输出八叉树基本信息
       buildLeafMap(vl_octree_);
-
     }
-    }
+  }
 
   if (triso_particle_) {
     if (rpn.size() != 1) {
@@ -698,7 +700,8 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
 
   if (vl_octree_) {
     // 首先使用八叉树查询最近的球体交点
-    auto octree_result = vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
+    auto octree_result =
+      vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
     if (octree_result.first != -1) {
       // 八叉树找到了碰撞距离
       double octree_dist = octree_result.second;
