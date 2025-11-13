@@ -46,7 +46,13 @@ public:
 
   // 邻居列表版本
   std::pair<int32_t, double> queryRay_Neighbor_search(const Position& origin,
-    const Position& direction, int32_t on_surface) const;
+    const Position& direction, int32_t on_surface,
+    double max_distance = INFTY) const;
+
+  // 节点定位版本（无邻域搜索加速）
+  std::pair<int32_t, double> queryRay_leaf_find(const Position& origin,
+    const Position& direction, int32_t on_surface,
+    double max_distance = INFTY) const;
 
   // 旧版本的queryRay函数，保留以备对比(后续可删除)
   std::pair<int32_t, double> queryRayold(const Position& origin,

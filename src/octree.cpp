@@ -199,13 +199,14 @@ std::pair<int32_t, double> OctreeNode::queryRay_morton_code(
 }
 
 std::pair<int32_t, double> OctreeNode::queryRay_Neighbor_search(
-  const Position& origin, const Position& direction, int32_t on_surface) const
+  const Position& origin, const Position& direction, int32_t on_surface,
+  double max_distance) const
 {
   Position current_position = origin; // 步骤（1）：令current_position=origin
   double minT = INFTY;
   int32_t result_sphere = std::numeric_limits<int32_t>::max();
   OctreeNode* old_leaf_node = nullptr;
-
+  double total_distance = 0.0;
   BoxFace exit_face = BoxFace::NONE;
 
   const OctreeNode* leaf_node = nullptr; // 当前位置所在的叶子节点
@@ -272,6 +273,64 @@ std::pair<int32_t, double> OctreeNode::queryRay_Neighbor_search(
     exit_face = exit_face1;
     // 如果出口距离无限大，说明射线不会再进入其他节点，退出循环
 
+    if (exit_distance == INFTY) {
+      break;
+    }
+    // 步骤（5）：更新current_position
+    current_position += direction * (exit_distance + FP_COINCIDENT);
+    total_distance += exit_distance + FP_COINCIDENT;
+    // 如果超过最大距离，退出循环
+    if (total_distance > max_distance) {
+      break;
+    }
+    old_leaf_node = const_cast<OctreeNode*>(leaf_node);
+  }
+  return {result_sphere, minT};
+}
+
+std::pair<int32_t, double> OctreeNode::queryRay_leaf_find(
+  const Position& origin, const Position& direction, int32_t on_surface,
+  double max_distance) const
+{
+  Position current_position = origin; // 步骤（1）：令current_position=origin
+  double minT = INFTY;
+  int32_t result_sphere = std::numeric_limits<int32_t>::max();
+  OctreeNode* old_leaf_node = nullptr;
+  bool if_stuck = false;
+
+  while (true) {
+    // 查找当前位置所在的叶子节点
+    const OctreeNode* leaf_node = findLeafNode(current_position);
+    if (leaf_node == nullptr || leaf_node == old_leaf_node) {
+      // 如果不在任何叶子节点内，向前移动一小段距离
+      current_position += direction * FP_COINCIDENT;
+      // 再次查找，如果还是不在则退出
+      leaf_node = findLeafNode(current_position);
+      if (leaf_node == nullptr) {
+        break;
+      }
+      if_stuck = leaf_node == old_leaf_node;
+      if (if_stuck) {
+        warning(
+          "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
+      }
+    }
+    // 如果没有堵在同一个叶子节点，查找当前位置的叶子节点内的球体
+    if (!if_stuck) {
+      for (const auto& sphere_token : leaf_node->spheres_indexs_) {
+        bool coincident {std::abs(sphere_token) == std::abs(on_surface)};
+        double t = model::surfaces[abs(sphere_token) - 1]->distance(
+          origin, direction, coincident);
+        if (t > 0 && t < minT) {
+          minT = t;
+          result_sphere = sphere_token; // 记录球体token
+        }
+      }
+    }
+    // 计算射线与当前节点边界的出口距离
+    auto [exit_face1, exit_distance] =
+      leaf_node->getExitDistance(current_position, direction);
+    // 如果出口距离无限大，说明射线不会再进入其他节点，退出循环
     if (exit_distance == INFTY) {
       break;
     }
