@@ -67,7 +67,7 @@ public:
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
-  // 打印八叉树基本信息
+  //打印八叉树基本信息
   void printBasicInfo() const;
 
   // 新增：查找包含指定球体的所有叶子节点（用于调试）
