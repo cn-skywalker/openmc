@@ -13,6 +13,13 @@
 
 namespace openmc {
 
+// 八叉树光线追踪模式
+enum class OctreeRayTraceMode {
+  MORTON_CODE,     // 基于Morton编码的节点定位
+  NEIGHBOR_SEARCH, // 基于邻居列表的节点定位
+  LEAF_FIND        // 基于叶子节点查找的节点定位
+};
+
 // 八叉树节点类
 class OctreeNode {
 public:
@@ -26,7 +33,6 @@ public:
   int depth_;                                         // 节点深度
   mutable std::array<std::vector<OctreeNode*>, 6>
     neighborsByFace; // 按面存储的邻居节点指针
-
   OctreeNode(const BoundingBox& boundary, double min_size, int capacity,
     uint64_t morton_code = 1, int depth = 0, bool divided = false)
     : boundary_(boundary), min_size_(min_size), capacity_(capacity),
@@ -61,7 +67,7 @@ public:
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
-  //打印八叉树基本信息
+  // 打印八叉树基本信息
   void printBasicInfo() const;
 
   // 新增：查找包含指定球体的所有叶子节点（用于调试）
