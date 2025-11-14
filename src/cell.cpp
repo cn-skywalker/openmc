@@ -596,6 +596,24 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       int capacity = std::stoi(get_node_value(cell_node, "octree_capacity"));
       double minSize = std::stod(get_node_value(cell_node, "octree_minsize"));
       vl_octree_ = new OctreeNode(vl_boundary, minSize, capacity);
+      // 读取八叉树光线追踪模式（Morton码推导模式、邻居列表模式，节点遍历模式），默认为Morton码推导模式
+      bool octree_mode_present = check_for_node(cell_node, "octree_mode");
+      if (octree_mode_present) {
+        std::string vl_octree_mode =
+          get_node_value(cell_node, "octree_mode", "morton_code");
+        if (vl_octree_mode == "morton_code") {
+          this->setRayTraceMode(OctreeRayTraceMode::MORTON_CODE);
+        } else if (vl_octree_mode == "neighbor_list") {
+          this->setRayTraceMode(OctreeRayTraceMode::NEIGHBOR_SEARCH);
+        } else if (vl_octree_mode == "node_traversal") {
+          this->setRayTraceMode(OctreeRayTraceMode::LEAF_FIND);
+        } else {
+          fatal_error(fmt::format("Unknown octree_mode {} for cell {}. "
+                                  "Valid options are: morton_code, "
+                                  "neighbor_list, node_traversal.",
+            vl_octree_mode, id_));
+        }
+      }
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
@@ -696,12 +714,21 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
 {
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
-  double max_dis = p->collision_distance();
-
+  // double max_dis = p->collision_distance();
+  double max_dis = INFTY;
+  auto octree_result = std::make_pair(-1, INFTY);
   if (vl_octree_) {
     // 首先使用八叉树查询最近的球体交点
-    auto octree_result =
-      vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
+    switch (this->ray_trace_mode_) {
+    case OctreeRayTraceMode::MORTON_CODE:
+      octree_result =
+        vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
+    case OctreeRayTraceMode::NEIGHBOR_SEARCH:
+      octree_result =
+        vl_octree_->queryRay_Neighbor_search(r, u, on_surface, max_dis);
+    case OctreeRayTraceMode::LEAF_FIND:
+      octree_result = vl_octree_->queryRay_leaf_find(r, u, on_surface, max_dis);
+    }
     if (octree_result.first != -1) {
       // 八叉树找到了碰撞距离
       double octree_dist = octree_result.second;
@@ -710,7 +737,6 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
         min_dist = octree_dist;
         i_surf = -octree_result.first;
       }
-
       // 如果八叉树已经找到交点，直接返回结果
       return {min_dist, i_surf};
     }
