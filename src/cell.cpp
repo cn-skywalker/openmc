@@ -450,7 +450,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   }
 
   // 检查是否开启八叉树加速
-  bool vl_octree_present = check_for_node(cell_node, "octree");
+  bool vl_octree_present = check_for_node(cell_node, "octree_mode");
 
   if (check_for_node(cell_node, "triso_particle")) {
     triso_particle_ = get_node_value_bool(cell_node, "triso_particle");
@@ -597,23 +597,21 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       double minSize = std::stod(get_node_value(cell_node, "octree_minsize"));
       vl_octree_ = new OctreeNode(vl_boundary, minSize, capacity);
       // 读取八叉树光线追踪模式（Morton码推导模式、邻居列表模式，节点遍历模式），默认为Morton码推导模式
-      bool octree_mode_present = check_for_node(cell_node, "octree_mode");
-      if (octree_mode_present) {
-        std::string vl_octree_mode =
-          get_node_value(cell_node, "octree_mode", "morton_code");
-        if (vl_octree_mode == "morton_code") {
-          this->setRayTraceMode(OctreeRayTraceMode::MORTON_CODE);
-        } else if (vl_octree_mode == "neighbor_list") {
-          this->setRayTraceMode(OctreeRayTraceMode::NEIGHBOR_SEARCH);
-        } else if (vl_octree_mode == "node_traversal") {
-          this->setRayTraceMode(OctreeRayTraceMode::LEAF_FIND);
-        } else {
-          fatal_error(fmt::format("Unknown octree_mode {} for cell {}. "
-                                  "Valid options are: morton_code, "
-                                  "neighbor_list, node_traversal.",
-            vl_octree_mode, id_));
-        }
+      std::string vl_octree_mode =
+        get_node_value(cell_node, "octree_mode");
+      if (vl_octree_mode == "morton_code") {
+        this->setRayTraceMode(OctreeRayTraceMode::MORTON_CODE);
+      } else if (vl_octree_mode == "neighbor_list") {
+        this->setRayTraceMode(OctreeRayTraceMode::NEIGHBOR_SEARCH);
+      } else if (vl_octree_mode == "node_traversal") {
+        this->setRayTraceMode(OctreeRayTraceMode::LEAF_FIND);
+      } else {
+        fatal_error(fmt::format("Unknown octree_mode {} for cell {}. "
+                                "Valid options are: morton_code, "
+                                "neighbor_list, node_traversal.",
+          vl_octree_mode, id_));
       }
+
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);

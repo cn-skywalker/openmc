@@ -803,7 +803,7 @@ class _SphericalShell(_Container):
             q[:] = (q - c)*ll[0]/r + c
 
 
-def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=False):
+def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=False, octree_mode=None, octree_capacity=0, octree_minsize=0):
     """Create a lattice containing TRISO particles for optimized tracking.
 
     Parameters
@@ -824,6 +824,16 @@ def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=F
         according to the pitch and shape. This is useful for creating a
         lattice with a very large number of elements.
         Default is False.
+    octree_mode : str or None
+        If virtual is True, set the octree mode for the background cell. Can be
+        'morton_code', 'neighbor_list', or 'node_traversal'. If None, the octree mode is not set.
+        Default is None.
+    octree_capacity : int
+        If virtual is True, set the octree capacity for the background cell.
+        Default is 0.
+    octree_minsize : float
+        If virtual is True, set the octree minimum size for the background cell.
+        Default is 0.
 
     Returns
     -------
@@ -878,6 +888,11 @@ def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=F
             background_cell.pitch = real_pitch
             background_cell.shape = real_shape
             background_cell.lower_left = [-pitch[i]/2 for i in range(len(pitch))]
+            if octree_mode is not None:
+                background_cell.octree_mode = octree_mode
+                background_cell.octree_capacity = octree_capacity
+                background_cell.octree_minsize = octree_minsize
+
 
         u = openmc.Universe()
         u.add_cell(background_cell)

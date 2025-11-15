@@ -124,6 +124,9 @@ class Cell(IDManagerMixin):
         self.lower_left = None
         self.pitch = None
         self.shape = None
+        self.octree_mode = None
+        self.octree_capacity = 0
+        self.octree_minsize = 0
 
     def __contains__(self, point):
         if self.region is None:
@@ -637,6 +640,10 @@ class Cell(IDManagerMixin):
             element.set("lower_left", ' '.join(map(str, self.lower_left)))
             element.set("pitch", ' '.join(map(str, self.pitch)))
             element.set("shape", ' '.join(map(str, self.shape)))
+        if self.octree_mode is not None:
+            element.set("octree_mode", str(self.octree_mode))
+            element.set("capacity", str(self.octree_capacity))
+            element.set("minsize", str(self.octree_minsize))
 
         if len(self._name) > 0:
             element.set("name", str(self.name))
