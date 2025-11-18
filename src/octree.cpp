@@ -117,6 +117,7 @@ std::pair<int32_t, double> OctreeNode::queryRay_morton_code(
   int32_t result_sphere = std::numeric_limits<int32_t>::max();
   uint64_t old_morton_code = -1;
   bool if_stuck = false;
+  int32_t stuck_count = 0;
   BoxFace exit_face = BoxFace::NONE;
   double total_distance = 0.0;
   const OctreeNode* leaf_node = nullptr;
@@ -160,8 +161,12 @@ std::pair<int32_t, double> OctreeNode::queryRay_morton_code(
         }
         if_stuck = leaf_node->getMortonCode() == old_morton_code;
         if (if_stuck) {
-          warning(
-            "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
+          stuck_count++;
+          if (stuck_count > 10) {
+            fatal_error("Fatal error in OctreeNode::queryRay: stuck in the "
+                        "same leaf node "
+                        "too many times.");
+          }
         }
       }
     }
@@ -297,6 +302,7 @@ std::pair<int32_t, double> OctreeNode::queryRay_leaf_find(
   int32_t result_sphere = std::numeric_limits<int32_t>::max();
   OctreeNode* old_leaf_node = nullptr;
   bool if_stuck = false;
+  int32_t stuck_count = 0;
 
   while (true) {
     // 查找当前位置所在的叶子节点
@@ -311,12 +317,17 @@ std::pair<int32_t, double> OctreeNode::queryRay_leaf_find(
       }
       if_stuck = leaf_node == old_leaf_node;
       if (if_stuck) {
-        warning(
-          "Warning in OctreeNode::queryRay: stuck in the same leaf node.");
+        stuck_count++;
+        if (stuck_count > 10) {
+          fatal_error(
+            "Fatal error in OctreeNode::queryRay: stuck in the same leaf node "
+            "too many times.");
+        }
       }
     }
     // 如果没有堵在同一个叶子节点，查找当前位置的叶子节点内的球体
     if (!if_stuck) {
+      stuck_count = 0;
       for (const auto& sphere_token : leaf_node->spheres_indexs_) {
         bool coincident {std::abs(sphere_token) == std::abs(on_surface)};
         double t = model::surfaces[abs(sphere_token) - 1]->distance(

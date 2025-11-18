@@ -89,54 +89,101 @@ double BoundingBox::rayDistance(
 std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
   const Position& origin, const Position& direction) const
 {
-  double tmin = 0.0;
-  double tmax = std::numeric_limits<double>::max();
-  BoxFace exit_face = BoxFace::NONE; // 初始化出口面
   Position minVal = min();
   Position maxVal = max();
 
-  for (int i = 0; i < 3; ++i) {
-    double dir = direction[i];
+  bool inside = (origin[0] > minVal[0] - FP_PRECISION &&
+                 origin[0] < maxVal[0] + FP_PRECISION &&
+                 origin[1] > minVal[1] - FP_PRECISION &&
+                 origin[1] < maxVal[1] + FP_PRECISION &&
+                 origin[2] > minVal[2] - FP_PRECISION &&
+                 origin[2] < maxVal[2] + FP_PRECISION);
 
-    if (std::abs(dir) < FP_PRECISION) {
-      // 射线平行于该轴
-      if (origin[i] < minVal[i] || origin[i] > maxVal[i]) {
-        return {BoxFace::NONE, std::numeric_limits<double>::max()}; // 不相交
-      }
-    } else {
-      double invD = 1.0 / dir;
-      double t0 = (minVal[i] - origin[i]) * invD;
-      double t1 = (maxVal[i] - origin[i]) * invD;
+  if (!inside) {
+    // 外部情况：使用完整算法
+    double tmin = 0.0;
+    double tmax = std::numeric_limits<double>::max();
+    BoxFace exit_face = BoxFace::NONE;
 
-      if (invD < 0.0) {
-        std::swap(t0, t1);
-      }
+    for (int i = 0; i < 3; ++i) {
+      double dir = direction[i];
 
-      // 更新 tmin (入口)
-      if (t0 > tmin) {
-        tmin = t0;
-      }
+      if (std::abs(dir) < FP_PRECISION) {
+        if (origin[i] < minVal[i] - FP_COINCIDENT ||
+            origin[i] > maxVal[i] + FP_COINCIDENT) {
+          return {BoxFace::NONE, std::numeric_limits<double>::max()};
+        }
+      } else {
+        double invD = 1.0 / dir;
+        double t0 = (minVal[i] - origin[i]) * invD;
+        double t1 = (maxVal[i] - origin[i]) * invD;
 
-      // 更新 tmax (出口) 并记录是哪个面
-      if (t1 < tmax) {
-        tmax = t1;
-        // 根据当前轴和方向，确定出口面
-        if (i == 0) { // X轴
-          exit_face = (dir > 0) ? BoxFace::MAX_X : BoxFace::MIN_X;
-        } else if (i == 1) { // Y轴
-          exit_face = (dir > 0) ? BoxFace::MAX_Y : BoxFace::MIN_Y;
-        } else if (i == 2) { // Z轴
-          exit_face = (dir > 0) ? BoxFace::MAX_Z : BoxFace::MIN_Z;
+        if (invD < 0.0) {
+          std::swap(t0, t1);
+        }
+
+        if (t0 > tmin)
+          tmin = t0;
+        if (t1 < tmax) {
+          tmax = t1;
+          if (i == 0) {
+            exit_face = (dir > 0) ? BoxFace::MAX_X : BoxFace::MIN_X;
+          } else if (i == 1) {
+            exit_face = (dir > 0) ? BoxFace::MAX_Y : BoxFace::MIN_Y;
+          } else {
+            exit_face = (dir > 0) ? BoxFace::MAX_Z : BoxFace::MIN_Z;
+          }
+        }
+
+        if (tmax <= tmin + FP_COINCIDENT) {
+          return {BoxFace::NONE, std::numeric_limits<double>::max()};
         }
       }
+    }
+    return {exit_face, tmax};
+  } else {
+    // 内部情况：改进的简化算法
+    double tmax = std::numeric_limits<double>::max();
+    BoxFace exit_face = BoxFace::NONE;
 
-      if (tmax <= tmin) {
-        return {BoxFace::NONE, std::numeric_limits<double>::max()};
+    for (int i = 0; i < 3; ++i) {
+      double dir = direction[i];
+
+      if (std::abs(dir) < FP_PRECISION) {
+        continue;
+      }
+
+      double invD = 1.0 / dir;
+      double t_exit;
+      BoxFace candidate_face;
+
+      if (dir > 0) {
+        t_exit = (maxVal[i] - origin[i]) * invD;
+        if (i == 0)
+          candidate_face = BoxFace::MAX_X;
+        else if (i == 1)
+          candidate_face = BoxFace::MAX_Y;
+        else
+          candidate_face = BoxFace::MAX_Z;
+      } else {
+        t_exit = (minVal[i] - origin[i]) * invD;
+        if (i == 0)
+          candidate_face = BoxFace::MIN_X;
+        else if (i == 1)
+          candidate_face = BoxFace::MIN_Y;
+        else
+          candidate_face = BoxFace::MIN_Z;
+      }
+
+      // 关键修复：忽略负值或过小的正值
+      if (t_exit > FP_COINCIDENT && t_exit < tmax) {
+        tmax = t_exit;
+        exit_face = candidate_face;
       }
     }
-  }
 
-  return {exit_face, tmax};
+    return {exit_face, tmax};
+  }
 }
 
 } // namespace openmc
