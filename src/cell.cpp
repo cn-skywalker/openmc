@@ -22,6 +22,7 @@
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
 #include "openmc/settings.h"
+#include "openmc/timer.h"
 #include "openmc/xml_interface.h"
 
 namespace openmc {
@@ -614,13 +615,18 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
                                 "neighbor_list, node_traversal.",
           vl_octree_mode, id_));
       }
-
+      warning(fmt::format("Virtual lattice octree for cell {} constructing, "
+                          "ray trace mode is {}, sphere count is {}",
+        id_, vl_octree_mode, rpn.size()));
+      Timer octree_timer;
+      octree_timer.start();
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
-      // vl_octree_->printTree(); // 打印八叉树结构（用于调试）
+      octree_timer.stop();
       write_message(
-        fmt::format("Virtual lattice octree for cell {} constructed.", id_));
+        fmt::format("Virtual lattice octree for cell {} constructed in {} s",
+          id_, octree_timer.elapsed()));
       vl_octree_->printBasicInfo(); // 输出八叉树基本信息
       buildLeafMap(vl_octree_);
     }
