@@ -826,7 +826,7 @@ def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=F
         Default is False.
     octree_mode : str or None
         If virtual is True, set the octree mode for the background cell. Can be
-        'morton_code', 'neighbor_list', or 'node_traversal'. If None, the octree mode is not set.
+        'morton_code', 'neighbor_list',  'leaf_find','leaf_find_old' or 'query_ray_old'. If None, the octree mode is not set.
         Default is None.
     octree_capacity : int
         If virtual is True, set the octree capacity for the background cell.

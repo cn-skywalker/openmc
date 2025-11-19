@@ -17,7 +17,9 @@ namespace openmc {
 enum class OctreeRayTraceMode {
   MORTON_CODE,     // 基于Morton编码的节点定位
   NEIGHBOR_SEARCH, // 基于邻居列表的节点定位
-  LEAF_FIND        // 基于叶子节点查找的节点定位
+  LEAF_FIND,       // 基于叶子节点查找的节点定位
+  LEAF_FIND_OLD,   // 旧版本的基于叶子节点查找的节点定位
+  QUERY_RAY_OLD    // 旧版本的queryRay函数
 };
 
 // 八叉树节点类
@@ -60,6 +62,11 @@ public:
     const Position& direction, int32_t on_surface,
     double max_distance = INFTY) const;
 
+  // 旧版本的queryRay_leaf_find函数，保留以备对比(后续可删除)
+  std::pair<int32_t, double> queryRay_leaf_find_old(const Position& origin,
+    const Position& direction, int32_t on_surface,
+    double max_distance = INFTY) const;
+
   // 旧版本的queryRay函数，保留以备对比(后续可删除)
   std::pair<int32_t, double> queryRayold(const Position& origin,
     const Position& direction, int32_t on_surface) const;
@@ -67,7 +74,7 @@ public:
   // 打印八叉树结构（用于调试）
   void printTree(int depth = 0, bool showAll = false) const;
 
-  //打印八叉树基本信息
+  // 打印八叉树基本信息
   void printBasicInfo() const;
 
   // 新增：查找包含指定球体的所有叶子节点（用于调试）
@@ -81,6 +88,7 @@ public:
 
   // 新增：查询位置所在的叶子节点
   const OctreeNode* findLeafNode(const Position& point) const;
+  const OctreeNode* findLeafNode_old(const Position& point) const;
 
   // 新增：计算射线与当前节点边界的出口距离
   std::pair<BoxFace, double> getExitDistance(
