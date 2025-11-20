@@ -417,10 +417,10 @@ std::pair<int32_t, double> OctreeNode::queryRayold(
 {
   // 如果射线与节点边界不相交，返回无效结果
   if (!boundary_.rayIntersect(origin, direction)) {
-    return {-1, std::numeric_limits<double>::max()};
+    return {std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
   }
 
-  std::pair<int32_t, double> result = {-1, std::numeric_limits<double>::max()};
+  std::pair<int32_t, double> result = {std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
   double minT = std::numeric_limits<double>::max();
 
   // 检查当前节点的球体
@@ -439,7 +439,7 @@ std::pair<int32_t, double> OctreeNode::queryRayold(
   if (divided_) {
     for (const auto& child : children_) {
       auto childResult = child->queryRayold(origin, direction, on_surface);
-      if (childResult.first != -1 && childResult.second < minT) {
+      if (childResult.first != std::numeric_limits<int32_t>::max() && childResult.second < minT) {
         minT = childResult.second;
         result = childResult;
       }
@@ -714,60 +714,102 @@ bool OctreeNode::shouldSubdivide() const
 std::pair<uint64_t, int> OctreeNode::deriveNextNodeMorton(
   BoxFace exit_face) const
 {
-  uint64_t x_code = 0;
-  uint64_t y_code = 0;
-  uint64_t z_code = 0;
-  for (int i = 0; i < depth_; ++i) {
-    // 1. 提取当前 3 位组中的 x, y, z 位
-    // (morton_code >> (3 * i)) 将当前组移动到最低位
-    // & 0x1 (即 & 1) 提取最低位
-    uint64_t x_bit = (morton_code_ >> (3 * i)) & 0x1;
-    uint64_t y_bit = (morton_code_ >> (3 * i + 1)) & 0x1;
-    uint64_t z_bit = (morton_code_ >> (3 * i + 2)) & 0x1;
+  uint64_t next_morton_code = morton_code_;
 
-    // 2. 将提取出的位设置到结果码的正确位置上
-    // result.x | x_bit 将位放入
-    // << i 将位移动到第 i 位
-    x_code |= (x_bit << i);
-    y_code |= (y_bit << i);
-    z_code |= (z_bit << i);
-  }
-  // 3. 根据出口面调整坐标
+  // 根据出口面直接调整 Morton 码
   switch (exit_face) {
   case BoxFace::MIN_X:
-    x_code -= 1;
+    // X坐标减1：需要找到最低的x位为1的位置，将其变为0，并将所有更低的x位变为1
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t x_bit_pos = 3 * i;
+      if ((next_morton_code >> x_bit_pos) & 0x1) {
+        // 找到第一个为1的x位，将其变为0
+        next_morton_code &= ~(1ULL << x_bit_pos);
+        // 将所有更低的x位设为1
+        for (int j = 0; j < i; ++j) {
+          next_morton_code |= (1ULL << (3 * j));
+        }
+        break;
+      }
+    }
     break;
+
   case BoxFace::MAX_X:
-    x_code += 1;
+    // X坐标加1：需要找到最低的x位为0的位置，将其变为1，并将所有更低的x位变为0
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t x_bit_pos = 3 * i;
+      if (!((next_morton_code >> x_bit_pos) & 0x1)) {
+        // 找到第一个为0的x位，将其变为1
+        next_morton_code |= (1ULL << x_bit_pos);
+        // 将所有更低的x位设为0
+        for (int j = 0; j < i; ++j) {
+          next_morton_code &= ~(1ULL << (3 * j));
+        }
+        break;
+      }
+    }
     break;
+
   case BoxFace::MIN_Y:
-    y_code -= 1;
+    // Y坐标减1：操作y位（位置 3*i+1）
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t y_bit_pos = 3 * i + 1;
+      if ((next_morton_code >> y_bit_pos) & 0x1) {
+        next_morton_code &= ~(1ULL << y_bit_pos);
+        for (int j = 0; j < i; ++j) {
+          next_morton_code |= (1ULL << (3 * j + 1));
+        }
+        break;
+      }
+    }
     break;
+
   case BoxFace::MAX_Y:
-    y_code += 1;
+    // Y坐标加1：操作y位（位置 3*i+1）
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t y_bit_pos = 3 * i + 1;
+      if (!((next_morton_code >> y_bit_pos) & 0x1)) {
+        next_morton_code |= (1ULL << y_bit_pos);
+        for (int j = 0; j < i; ++j) {
+          next_morton_code &= ~(1ULL << (3 * j + 1));
+        }
+        break;
+      }
+    }
     break;
+
   case BoxFace::MIN_Z:
-    z_code -= 1;
+    // Z坐标减1：操作z位（位置 3*i+2）
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t z_bit_pos = 3 * i + 2;
+      if ((next_morton_code >> z_bit_pos) & 0x1) {
+        next_morton_code &= ~(1ULL << z_bit_pos);
+        for (int j = 0; j < i; ++j) {
+          next_morton_code |= (1ULL << (3 * j + 2));
+        }
+        break;
+      }
+    }
     break;
+
   case BoxFace::MAX_Z:
-    z_code += 1;
+    // Z坐标加1：操作z位（位置 3*i+2）
+    for (int i = 0; i < depth_; ++i) {
+      uint64_t z_bit_pos = 3 * i + 2;
+      if (!((next_morton_code >> z_bit_pos) & 0x1)) {
+        next_morton_code |= (1ULL << z_bit_pos);
+        for (int j = 0; j < i; ++j) {
+          next_morton_code &= ~(1ULL << (3 * j + 2));
+        }
+        break;
+      }
+    }
     break;
+
   default:
     break;
   }
-  // 4. 重组 Morton 编码
-  uint64_t next_morton_code = 0;
-  for (int i = 0; i < depth_; ++i) {
-    uint64_t x_bit = (x_code >> i) & 0x1;
-    uint64_t y_bit = (y_code >> i) & 0x1;
-    uint64_t z_bit = (z_code >> i) & 0x1;
 
-    next_morton_code |= (x_bit << (3 * i));
-    next_morton_code |= (y_bit << (3 * i + 1));
-    next_morton_code |= (z_bit << (3 * i + 2));
-  }
-  // 加上头位的1
-  next_morton_code |= (1ULL << (3 * depth_));
   return {next_morton_code, depth_};
 }
 

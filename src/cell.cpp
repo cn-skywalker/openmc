@@ -730,16 +730,20 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
     case OctreeRayTraceMode::MORTON_CODE:
       octree_result =
         vl_octree_->queryRay_morton_code(r, u, on_surface, max_dis);
+      break;
     case OctreeRayTraceMode::NEIGHBOR_SEARCH:
       octree_result =
         vl_octree_->queryRay_Neighbor_search(r, u, on_surface, max_dis);
+      break;
     case OctreeRayTraceMode::LEAF_FIND:
       octree_result = vl_octree_->queryRay_leaf_find(r, u, on_surface, max_dis);
-    case OctreeRayTraceMode::LEAF_FIND_OLD:
-      octree_result =
-        vl_octree_->queryRay_leaf_find_old(r, u, on_surface, max_dis);
+      break;
+    // case OctreeRayTraceMode::LEAF_FIND_OLD:
+    //   octree_result =
+    //     vl_octree_->queryRay_leaf_find_old(r, u, on_surface, max_dis);
     case OctreeRayTraceMode::QUERY_RAY_OLD:
       octree_result = vl_octree_->queryRayold(r, u, on_surface);
+      break;
     }
     if (octree_result.first != -1) {
       // 八叉树找到了碰撞距离
