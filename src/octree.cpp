@@ -417,10 +417,12 @@ std::pair<int32_t, double> OctreeNode::queryRayold(
 {
   // 如果射线与节点边界不相交，返回无效结果
   if (!boundary_.rayIntersect(origin, direction)) {
-    return {std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
+    return {
+      std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
   }
 
-  std::pair<int32_t, double> result = {std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
+  std::pair<int32_t, double> result = {
+    std::numeric_limits<int32_t>::max(), std::numeric_limits<double>::max()};
   double minT = std::numeric_limits<double>::max();
 
   // 检查当前节点的球体
@@ -439,7 +441,8 @@ std::pair<int32_t, double> OctreeNode::queryRayold(
   if (divided_) {
     for (const auto& child : children_) {
       auto childResult = child->queryRayold(origin, direction, on_surface);
-      if (childResult.first != std::numeric_limits<int32_t>::max() && childResult.second < minT) {
+      if (childResult.first != std::numeric_limits<int32_t>::max() &&
+          childResult.second < minT) {
         minT = childResult.second;
         result = childResult;
       }
@@ -517,10 +520,14 @@ void OctreeNode::printBasicInfo() const
 {
   // 打印当前树结构的最深深度和叶子节点数量
   int max_depth = 0;
+  int total_leaves = 0;
+  int total_particles = 0;
+
   std::function<void(const OctreeNode*, int)> traverse;
   traverse = [&](const OctreeNode* node, int depth) {
     if (!node->divided_) {
-
+      total_leaves++;
+      total_particles += node->spheres_indexs_.size();
       if (depth > max_depth) {
         max_depth = depth;
       }
@@ -532,9 +539,16 @@ void OctreeNode::printBasicInfo() const
   };
   traverse(this, 0);
 
-  // 输出最深深度
+  // 计算平均值
+  double avg_particles = total_leaves > 0
+                           ? static_cast<double>(total_particles) / total_leaves
+                           : 0.0;
+
+  // 输出基本信息
   write_message(fmt::format(
-    "Octree basic info: max depth={}, max capacity={}", max_depth, capacity_));
+    "Octree basic info: max depth={}, max capacity={}, total leaves={}, total "
+    "particles={}, avg particles per leaf={:.2f}",
+    max_depth, capacity_, total_leaves, total_particles, avg_particles));
 }
 
 void OctreeNode::printTree(int depth, bool showAll) const
