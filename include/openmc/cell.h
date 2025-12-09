@@ -353,7 +353,7 @@ public:
   vector<double> vl_pitch_;
   vector<int32_t> vl_shape_;
   vector<vector<int32_t>> vl_triso_distribution_;
-  OctreeNode* vl_octree_ {nullptr};
+  std::unique_ptr<OctreeNode> vl_octree_ {nullptr};
   // 当前光线追踪模式
   OctreeRayTraceMode ray_trace_mode_ = OctreeRayTraceMode::MORTON_CODE;
   //! \brief Index corresponding to this cell in distribcell arrays

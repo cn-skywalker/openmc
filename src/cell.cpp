@@ -596,7 +596,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
       int capacity = std::stoi(get_node_value(cell_node, "capacity"));
       double minSize = std::stod(get_node_value(cell_node, "minsize"));
-      vl_octree_ = new OctreeNode(vl_boundary, minSize, capacity);
+      vl_octree_ = std::make_unique<OctreeNode>(vl_boundary, minSize, capacity);
       // 读取八叉树光线追踪模式（Morton码推导模式、邻居列表模式，节点遍历模式），默认为Morton码推导模式
       std::string vl_octree_mode = get_node_value(cell_node, "octree_mode");
       if (vl_octree_mode == "morton_code") {
@@ -622,13 +622,13 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       octree_timer.start();
       //  将triso粒子插入八叉树网格中去
       generate_triso_distribution(
-        vl_lower_left_, vl_upper_right, rpn, vl_octree_, id_);
+        vl_lower_left_, vl_upper_right, rpn, vl_octree_.get(), id_);
       octree_timer.stop();
       write_message(
         fmt::format("Virtual lattice octree for cell {} constructed in {} s",
           id_, octree_timer.elapsed()));
-      vl_octree_->printBasicInfo(); // 输出八叉树基本信息
-      buildLeafMap(vl_octree_);
+      vl_octree_->printBasicInfo();   // 输出八叉树基本信息
+      buildLeafMap(vl_octree_.get()); // 构建叶子节点映射表
     }
   }
 

@@ -201,7 +201,7 @@ void finalize_cell_densities()
     // Convert to density multipliers.
     if (!c->density_mult_.empty()) {
       for (int32_t instance = 0; instance < c->density_mult_.size();
-           ++instance) {
+        ++instance) {
         c->density_mult_[instance] /=
           model::materials[c->material(instance)]->density_gpcc();
       }
@@ -634,6 +634,8 @@ void free_memory_geometry()
 
   model::lattices.clear();
   model::lattice_map.clear();
+
+  model::leaf_nodes_map.clear();
 
   model::overlap_check_count.clear();
 }
