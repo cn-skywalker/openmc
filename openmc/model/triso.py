@@ -803,7 +803,7 @@ class _SphericalShell(_Container):
             q[:] = (q - c)*ll[0]/r + c
 
 
-def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=False, octree_mode=None, octree_capacity=0, octree_minsize=0):
+def create_triso_lattice(trisos, lower_left, pitch, shape, background, virtual=False, octree_mode=None, octree_capacity=0, octree_minsize=0.0):
     """Create a lattice containing TRISO particles for optimized tracking.
 
     Parameters
