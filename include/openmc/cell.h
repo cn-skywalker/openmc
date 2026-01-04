@@ -308,7 +308,7 @@ public:
     }
   }
 
-  // 设置光线追踪模式
+  // Set ray tracing mode
   void setRayTraceMode(OctreeRayTraceMode mode) { ray_trace_mode_ = mode; }
 
 protected:
@@ -354,7 +354,7 @@ public:
   vector<int32_t> vl_shape_;
   vector<vector<int32_t>> vl_triso_distribution_;
   std::unique_ptr<OctreeNode> vl_octree_ {nullptr};
-  // 当前光线追踪模式
+  // Current ray tracing mode
   OctreeRayTraceMode ray_trace_mode_ = OctreeRayTraceMode::MORTON_CODE;
   //! \brief Index corresponding to this cell in distribcell arrays
   int distribcell_index_ {C_NONE};

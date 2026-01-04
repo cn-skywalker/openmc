@@ -15,7 +15,7 @@ enum class BoxFace {
   MAX_Y,
   MIN_Z,
   MAX_Z,
-  NONE // 不相交或射线在盒子内部
+  NONE // No intersection or ray is inside the box
 };
 
 //==============================================================================
@@ -88,10 +88,10 @@ public:
   Position getCenter() const;
   Position getSize() const;
   bool rayIntersect(const Position& origin, const Position& direction) const;
-  // 计算射线到边界框的最近相交距离
+  // Calculate the nearest intersection distance from ray to bounding box
   double rayDistance(const Position& origin, const Position& direction) const;
 
-  // 新增：计算射线与边界框的进出点距离
+  // Calculate entry and exit point distances of ray intersection with bounding box
   std::pair<BoxFace, double> rayIntersectionDistances(
     const Position& origin, const Position& direction) const;
 };

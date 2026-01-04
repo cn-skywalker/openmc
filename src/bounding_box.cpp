@@ -49,7 +49,7 @@ bool BoundingBox::rayIntersect(
 double BoundingBox::rayDistance(
   const Position& origin, const Position& direction) const
 {
-  double tmin = 0.0; // 射线 t >= 0
+  double tmin = 0.0; // Ray t >= 0
   double tmax = std::numeric_limits<double>::max();
 
   for (int i = 0; i < 3; ++i) {
@@ -58,11 +58,11 @@ double BoundingBox::rayDistance(
     double maxVal = max()[i];
 
     if (std::abs(dir) < FP_PRECISION) {
-      // 射线平行于该轴
+      // Ray is parallel to this axis
       if (origin[i] < minVal || origin[i] > maxVal) {
-        return std::numeric_limits<double>::max(); // 不相交
+        return std::numeric_limits<double>::max(); // No intersection
       }
-      // 否则不限制 t 范围，跳过
+      // Otherwise don't restrict t range, skip
     } else {
       double invD = 1.0 / dir;
       double t0 = (minVal - origin[i]) * invD;
@@ -76,15 +76,13 @@ double BoundingBox::rayDistance(
       tmax = std::min(t1, tmax);
 
       if (tmax <= tmin) {
-        return std::numeric_limits<double>::max(); // 不相交
+        return std::numeric_limits<double>::max(); // No intersection
       }
     }
   }
 
-  return tmin; // 返回最近的相交距离
+  return tmin; // Return the nearest intersection distance
 }
-
-// 在 bounding_box.cpp 中添加以下实现：
 
 std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
   const Position& origin, const Position& direction) const
@@ -100,7 +98,7 @@ std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
                  origin[2] < maxVal[2] + FP_PRECISION);
 
   if (!inside) {
-    // 外部情况：使用完整算法
+    // External case: use full algorithm
     double tmin = 0.0;
     double tmax = std::numeric_limits<double>::max();
     BoxFace exit_face = BoxFace::NONE;
@@ -142,7 +140,7 @@ std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
     }
     return {exit_face, tmax};
   } else {
-    // 内部情况：改进的简化算法
+    // Internal case: improved simplified algorithm
     double tmax = std::numeric_limits<double>::max();
     BoxFace exit_face = BoxFace::NONE;
 
@@ -175,7 +173,7 @@ std::pair<BoxFace, double> BoundingBox::rayIntersectionDistances(
           candidate_face = BoxFace::MIN_Z;
       }
 
-      // 关键修复：忽略负值或过小的正值
+      // Critical fix: ignore negative values or overly small positive values
       if (t_exit > FP_COINCIDENT && t_exit < tmax) {
         tmax = t_exit;
         exit_face = candidate_face;

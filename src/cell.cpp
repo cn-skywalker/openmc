@@ -450,7 +450,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
     virtual_lattice_ = false;
   }
 
-  // 检查是否开启八叉树加速
+  // Check if octree acceleration is enabled
   bool vl_octree_present = check_for_node(cell_node, "octree_mode");
 
   if (check_for_node(cell_node, "triso_particle")) {
@@ -582,22 +582,22 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   vector<int32_t> rpn = region_.generate_postfix(id_);
 
   if (virtual_lattice_) {
-    // 将triso粒子分布到均匀网格中去
+    // Distribute triso particles to uniform grid
     vl_triso_distribution_ = generate_triso_distribution(
       vl_shape_, vl_pitch_, vl_lower_left_, rpn, id_);
-    // 计算右上角坐标
+    // Calculate upper right corner coordinates
     vector<double> vl_upper_right(3);
     for (int i = 0; i < 3; i++) {
       vl_upper_right[i] = vl_lower_left_[i] + vl_shape_[i] * vl_pitch_[i];
     }
 
     if (vl_octree_present) {
-      // 初始化八叉树
+      // Initialize octree
       BoundingBox vl_boundary(vl_lower_left_, vl_upper_right);
       int capacity = std::stoi(get_node_value(cell_node, "capacity"));
       double minSize = std::stod(get_node_value(cell_node, "minsize"));
       vl_octree_ = std::make_unique<OctreeNode>(vl_boundary, minSize, capacity);
-      // 读取八叉树光线追踪模式（Morton码推导模式、邻居列表模式，节点遍历模式），默认为Morton码推导模式
+      // Read octree ray tracing mode (Morton code derivation mode, neighbor list mode, node traversal mode), default is Morton code derivation mode
       std::string vl_octree_mode = get_node_value(cell_node, "octree_mode");
       if (vl_octree_mode == "morton_code") {
         this->setRayTraceMode(OctreeRayTraceMode::MORTON_CODE);
@@ -620,15 +620,15 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
         id_, vl_octree_mode, rpn.size()));
       Timer octree_timer;
       octree_timer.start();
-      //  将triso粒子插入八叉树网格中去
+      // Insert triso particles into octree grid
       generate_triso_distribution(
         vl_lower_left_, vl_upper_right, rpn, vl_octree_.get(), id_);
       octree_timer.stop();
       write_message(
         fmt::format("Virtual lattice octree for cell {} constructed in {} s",
           id_, octree_timer.elapsed()));
-      vl_octree_->printBasicInfo();   // 输出八叉树基本信息
-      buildLeafMap(vl_octree_.get()); // 构建叶子节点映射表
+      vl_octree_->printBasicInfo();   // Output octree basic information
+      buildLeafMap(vl_octree_.get()); // Build leaf node mapping table
     }
   }
 
@@ -725,7 +725,7 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
   // double max_dis = INFTY;
   auto octree_result = std::make_pair(-1, INFTY);
   if (vl_octree_) {
-    // 首先使用八叉树查询最近的球体交点
+    // First use octree to query nearest sphere intersection
     switch (this->ray_trace_mode_) {
     case OctreeRayTraceMode::MORTON_CODE:
       octree_result =
@@ -746,14 +746,14 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
       break;
     }
     if (octree_result.first != -1) {
-      // 八叉树找到了碰撞距离
+      // Octree found collision distance
       double octree_dist = octree_result.second;
 
       if (octree_dist < min_dist) {
         min_dist = octree_dist;
         i_surf = -octree_result.first;
       }
-      // 如果八叉树已经找到交点，直接返回结果
+      // If octree has found intersection, return result directly
       return {min_dist, i_surf};
     }
   }
@@ -837,15 +837,15 @@ std::pair<double, int32_t> CSGCell::distance_in_virtual_lattice(
     }
   }
 
-  // (调试用)判断八叉树搜索结果是否与网格搜索结果一致(后续可删除)
+  // (For debugging) Check if octree search results match grid search results (can be deleted later)
   // if (vl_octree_) {
-  //   // 首先使用八叉树查询最近的球体交点
+  //   // First use octree to query nearest sphere intersection
   //   auto octree_result = vl_octree_->queryRay(r, u, on_surface);
 
   //   if (std::abs(octree_result.second - min_dist) >= FP_PRECISION ||
   //       i_surf != -octree_result.first) {
   //     warning(
-  //       fmt::format("八叉树没有找到交点,但是网格找到了交点,token为{}",
+  //       fmt::format("Octree did not find intersection, but grid found intersection, token is {}",
   //       i_surf));
   //     octree_result = vl_octree_->queryRay(r, u, on_surface);
   //   }
