@@ -67,56 +67,139 @@ bool Universe::find_cell(GeometryState& p) const
 bool Universe::find_cell_in_virtual_lattice(GeometryState& p) const
 {
   Cell& c {*model::cells[model::cell_map[filled_with_triso_base_]]};
-  vector<int> lat_ind(3);
   Position r {p.r_local()};
-  lat_ind[0] = std::max<int>(
-    std::min<int>(
-      floor((r.x - c.vl_lower_left_[0]) / c.vl_pitch_[0]), c.vl_shape_[0] - 1),
-    0);
-  lat_ind[1] = std::max<int>(
-    std::min<int>(
-      floor((r.y - c.vl_lower_left_[1]) / c.vl_pitch_[1]), c.vl_shape_[1] - 1),
-    0);
-  lat_ind[2] = std::max<int>(
-    std::min<int>(
-      floor((r.z - c.vl_lower_left_[2]) / c.vl_pitch_[2]), c.vl_shape_[2] - 1),
-    0);
-
   int32_t i_univ = p.lowest_coord().universe();
-  for (int token :
-    c.vl_triso_distribution_[lat_ind[0] + lat_ind[1] * c.vl_shape_[0] +
-                             lat_ind[2] * c.vl_shape_[0] * c.vl_shape_[1]]) {
-    vector<double> triso_center = model::surfaces[abs(token) - 1]->get_center();
-    double triso_radius = model::surfaces[abs(token) - 1]->get_radius();
-    if (model::cells
-          [model::cell_map[model::surfaces[abs(token) - 1]->triso_base_index_]]
+
+  // Define grid search helper function (for verification and fallback)
+  auto grid_search = [&](GeometryState& state) -> std::pair<bool, int32_t> {
+    vector<int> lat_ind(3);
+    lat_ind[0] = std::max<int>(
+      std::min<int>(floor((r.x - c.vl_lower_left_[0]) / c.vl_pitch_[0]),
+        c.vl_shape_[0] - 1),
+      0);
+    lat_ind[1] = std::max<int>(
+      std::min<int>(floor((r.y - c.vl_lower_left_[1]) / c.vl_pitch_[1]),
+        c.vl_shape_[1] - 1),
+      0);
+    lat_ind[2] = std::max<int>(
+      std::min<int>(floor((r.z - c.vl_lower_left_[2]) / c.vl_pitch_[2]),
+        c.vl_shape_[2] - 1),
+      0);
+
+    for (int token :
+      c.vl_triso_distribution_[lat_ind[0] + lat_ind[1] * c.vl_shape_[0] +
+                               lat_ind[2] * c.vl_shape_[0] * c.vl_shape_[1]]) {
+      vector<double> triso_center =
+        model::surfaces[abs(token) - 1]->get_center();
+      double triso_radius = model::surfaces[abs(token) - 1]->get_radius();
+      if (model::cells[model::cell_map[model::surfaces[abs(token) - 1]
+                           ->triso_base_index_]]
             ->universe_ != i_univ)
-      continue;
-    if (abs(token) == abs(p.surface())) {
-      if (p.surface() < 0) {
-        p.lowest_coord().cell() =
-          model::cell_map[model::surfaces[abs(token) - 1]
-                            ->triso_particle_index_];
-        return true;
-      } else {
-        p.lowest_coord().cell() = model::cell_map[filled_with_triso_base_];
-        return true;
+        continue;
+      if (abs(token) == abs(p.surface())) {
+        if (p.surface() < 0) {
+          return {true, model::cell_map[model::surfaces[abs(token) - 1]
+                            ->triso_particle_index_]};
+        } else {
+          return {true, model::cell_map[filled_with_triso_base_]};
+        }
+      }
+      if (pow(r.x - triso_center[0], 2) + pow(r.y - triso_center[1], 2) +
+            pow(r.z - triso_center[2], 2) <
+          pow(triso_radius, 2)) {
+        return {true, model::cell_map[model::surfaces[abs(token) - 1]
+                          ->triso_particle_index_]};
       }
     }
-    if (pow(r.x - triso_center[0], 2) + pow(r.y - triso_center[1], 2) +
-          pow(r.z - triso_center[2], 2) <
-        pow(triso_radius, 2)) {
-      p.lowest_coord().cell() =
-        model::cell_map[model::surfaces[abs(token) - 1]->triso_particle_index_];
-      return true;
+    if (model::cells[model::cell_map[filled_with_triso_base_]]->universe_ ==
+        i_univ) {
+      return {true, model::cell_map[filled_with_triso_base_]};
     }
+    return {false, -1};
+  };
+
+  // Prefer octree search if available
+  if (c.vl_octree_) {
+    // Save original state
+    int32_t original_cell = p.lowest_coord().cell();
+
+    // ========== Octree search ==========
+    bool octree_found = false;
+    int32_t octree_cell = -1;
+
+    // Query sphere containing particle position using octree
+    int32_t sphere_token = c.vl_octree_->queryPoint(r);
+
+    if (sphere_token != -1) {
+      // Sphere found, check universe match
+      if (model::cells[model::cell_map[model::surfaces[abs(sphere_token) - 1]
+                           ->triso_base_index_]]
+            ->universe_ == i_univ) {
+        // Handle surface coincidence
+        if (abs(sphere_token) == abs(p.surface())) {
+          if (p.surface() < 0) {
+            octree_cell = model::cell_map[model::surfaces[abs(sphere_token) - 1]
+                ->triso_particle_index_];
+            octree_found = true;
+          } else {
+            octree_cell = model::cell_map[filled_with_triso_base_];
+            octree_found = true;
+          }
+        } else {
+          // Particle is inside sphere (queryPoint already verified this)
+          octree_cell = model::cell_map[model::surfaces[abs(sphere_token) - 1]
+              ->triso_particle_index_];
+          octree_found = true;
+        }
+      }
+    }
+
+    // Sphere not found or universe mismatch, check base cell
+    if (!octree_found) {
+      if (model::cells[model::cell_map[filled_with_triso_base_]]->universe_ ==
+          i_univ) {
+        octree_cell = model::cell_map[filled_with_triso_base_];
+        octree_found = true;
+      }
+    }
+
+    // ========== Cross-validation: grid search ==========
+    // Restore state
+    // p.lowest_coord().cell() = original_cell;
+
+    // // Execute grid search for verification
+    // auto [grid_found, grid_cell] = grid_search(p);
+
+    // // Compare results
+    // bool results_match = (octree_found == grid_found);
+    // if (results_match && octree_found) {
+    //   results_match = (octree_cell == grid_cell);
+    // }
+
+    // // Output warning if results don't match
+    // if (!results_match) {
+    //   warning(fmt::format(
+    //     "Octree and grid search mismatch in universe {} at position "
+    //     "({:.6e}, {:.6e}, {:.6e}): octree found={}, cell={}, grid found={}, "
+    //     "cell={}",
+    //     id_, r.x, r.y, r.z, octree_found, octree_cell, grid_found,
+    //     grid_cell));
+    // }
+
+    // ========== Apply octree result ==========
+    if (octree_found) {
+      p.lowest_coord().cell() = octree_cell;
+    }
+
+    return octree_found;
   }
-  if (model::cells[model::cell_map[filled_with_triso_base_]]->universe_ ==
-      i_univ) {
-    p.lowest_coord().cell() = model::cell_map[filled_with_triso_base_];
-    return true;
+
+  // Fallback to grid search (when octree is not available)
+  auto [found, cell] = grid_search(p);
+  if (found) {
+    p.lowest_coord().cell() = cell;
   }
-  return false;
+  return found;
 }
 
 BoundingBox Universe::bounding_box() const
