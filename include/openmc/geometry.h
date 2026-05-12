@@ -72,6 +72,13 @@ void cross_lattice(
   GeometryState& p, const BoundaryInfo& boundary, bool verbose = false);
 
 //==============================================================================
+//! Handle a stochastic media boundary crossing (matrix <-> particle).
+//==============================================================================
+
+void cross_stochastic_boundary(
+  GeometryState& p, const BoundaryInfo& info, bool verbose);
+
+//==============================================================================
 //! Find the next boundary a particle will intersect.
 //==============================================================================
 

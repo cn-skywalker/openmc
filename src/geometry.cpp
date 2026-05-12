@@ -10,6 +10,7 @@
 #include "openmc/lattice.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/string_utils.h"
 #include "openmc/surface.h"
 
@@ -92,6 +93,8 @@ int cell_instance_at_level(const GeometryState& p, int level)
       if (lat.are_valid_indices(i_xyz)) {
         instance += lat.offset(c.distribcell_index_, i_xyz);
       }
+    } else if (c_i.type_ == Fill::STOCHASTIC_MEDIA) {
+      instance += c_i.offset_[c.distribcell_index_];
     }
   }
   return instance;
@@ -243,6 +246,55 @@ bool find_cell_inner(
             p.id(), lat.id_));
         }
       }
+    } else if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+      //========================================================================
+      //! Stochastic media cell — handle φ allocation and set phase material.
+      //!
+      //! find_cell_inner always returns the matrix phase by default.
+      //! For source particles (cell_last == C_NONE), a position-based RNG
+      //! decides whether to enter the particle phase (φ probability).
+      //! If entering particle phase, set up the next coord level and let the
+      //! for loop continue into the particle universe (same as Fill::UNIVERSE).
+      auto& media = *model::stochastic_media[c.fill_];
+
+      p.cell_instance() = 0;
+      if (c.distribcell_index_ >= 0) {
+        p.cell_instance() = cell_instance_at_level(p, p.n_coord() - 1);
+      }
+
+      // Source particle φ allocation (position-based RNG, not particle RNG)
+      bool entering_particle = false;
+      if (p.cell_last(p.n_coord() - 1) == C_NONE) {
+        uint64_t seed = compute_stochastic_seed(p.r_local(), p.u_local(),
+          media.grid_size_, StochasticRNGRole::PHASE_ALLOCATION, media.seed_);
+        if (prn(&seed) < media.pf_) {
+          entering_particle = true;
+          // Set up next coord level (same pattern as Fill::UNIVERSE).
+          // The for loop will ++p.n_coord() and exhaustive-search the particle
+          // universe.
+          Position C =
+            media.compute_source_sphere_center(p.r_local(), p.u_local());
+          auto& coord {p.coord(p.n_coord())};
+          coord.universe() = media.particle_universe_;
+          coord.r() = p.r_local() - C;
+          coord.u() = p.u_local();
+          // lattice_ is already C_NONE from caller's coord reset
+        }
+      }
+
+      if (entering_particle) {
+        // Don't return — fall through to i_cell=C_NONE; found=false
+        // so the loop continues into the particle universe.
+      } else {
+        // Matrix phase (default or (1-φ) probability)
+        p.material_last() = p.material();
+        p.material() = media.matrix_fill_;
+        p.sqrtkT_last() = p.sqrtkT();
+        p.sqrtkT() = media.matrix_sqrtkT_;
+        p.density_mult_last() = p.density_mult();
+        p.density_mult() = 1.0;
+        return true;
+      }
     }
     i_cell = C_NONE; // trip non-neighbor cell search at next iteration
     found = false;
@@ -294,6 +346,72 @@ bool exhaustive_find_cell(GeometryState& p, bool verbose)
     p.coord(i).reset();
   }
   return find_cell_inner(p, nullptr, verbose);
+}
+
+//==============================================================================
+
+void cross_stochastic_boundary(
+  GeometryState& p, const BoundaryInfo& info, bool verbose)
+{
+  // Direction detection: n_coord_last saved in event_cross_surface.
+  // event_cross_surface sets n_coord = coord_level.
+  // So n_coord_last <= coord_level → entering; n_coord_last > coord_level →
+  // exiting
+  bool entering = (p.n_coord_last() <= info.coord_level());
+
+  // Resolve stochastic media reference (used by both entering and exiting
+  // paths)
+  int stoch_level = info.coord_level() - 1;
+  Cell& c_stoch {*model::cells[p.coord(stoch_level).cell()]};
+  auto& media = *model::stochastic_media[c_stoch.fill_];
+
+  if (entering) {
+    // ================================================================
+    // Matrix→Particle: set offset coordinates, delegate to find_cell
+    // ================================================================
+    if (verbose) {
+      write_message(
+        fmt::format("    Entering stochastic media {} particle. r=({}, {}, {})",
+          media.id_, p.r().x, p.r().y, p.r().z),
+        1);
+    }
+
+    Position C = media.compute_sphere_center(p.r_local(), p.u_local());
+
+    auto& coord {p.coord(p.n_coord())};
+    coord.universe() = media.particle_universe_;
+    coord.r() = p.r_local() - C;
+    coord.u() = p.u_local();
+    coord.lattice() = C_NONE;
+    ++p.n_coord();
+
+    if (!exhaustive_find_cell(p, verbose)) {
+      p.mark_as_lost(
+        fmt::format("Particle {} could not be located inside particle of "
+                    "stochastic media {}.",
+          p.id(), media.id_));
+    }
+
+  } else {
+    if (verbose) {
+      write_message(
+        fmt::format("    Exiting stochastic media {} particle. r=({}, {}, {})",
+          media.id_, p.r().x, p.r().y, p.r().z),
+        1);
+    }
+    // ================================================================
+    // Particle→Matrix: delegate to find_cell
+    // ================================================================
+    for (int j = p.n_coord(); j < model::n_coord_levels; ++j) {
+      p.coord(j).reset();
+    }
+
+    if (!exhaustive_find_cell(p, verbose)) {
+      p.mark_as_lost(fmt::format("Particle {} could not be located after "
+                                 "exiting stochastic media particle.",
+        p.id()));
+    }
+  }
 }
 
 //==============================================================================
@@ -361,8 +479,6 @@ void cross_lattice(GeometryState& p, const BoundaryInfo& boundary, bool verbose)
 BoundaryInfo distance_to_boundary(GeometryState& p)
 {
   BoundaryInfo info;
-  double d_lat = INFINITY;
-  double d_surf = INFINITY;
   int32_t level_surf_cross;
   array<int, 3> level_lat_trans {};
 
@@ -373,16 +489,15 @@ BoundaryInfo distance_to_boundary(GeometryState& p)
     const Direction& u {coord.u()};
     Cell& c {*model::cells[coord.cell()]};
 
-    // Find the oncoming surface in this cell and the distance to it.
+    // 1. Cell surface distance (existing logic)
     auto surface_distance = c.distance(r, u, p.surface(), &p);
-    d_surf = surface_distance.first;
+    double d_surf = surface_distance.first;
     level_surf_cross = surface_distance.second;
 
-    // Find the distance to the next lattice tile crossing.
+    // 2. Lattice distance (existing logic unchanged)
+    double d_lat {INFINITY};
     if (coord.lattice() != C_NONE) {
       auto& lat {*model::lattices[coord.lattice()]};
-      // TODO: refactor so both lattice use the same position argument (which
-      // also means the lat.type attribute can be removed)
       std::pair<double, array<int, 3>> lattice_distance;
       switch (lat.type_) {
       case LatticeType::rect:
@@ -409,43 +524,89 @@ BoundaryInfo distance_to_boundary(GeometryState& p)
       }
     }
 
-    // If the boundary on this coordinate level is coincident with a boundary on
-    // a higher level then we need to make sure that the higher level boundary
-    // is selected.  This logic must consider floating point precision.
+    // 3. Stochastic media chord length distance
+    // Only sample when in matrix phase (not in particle phase)
+    double d_stoch {INFINITY};
+    if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+      auto& media = *model::stochastic_media[c.fill_];
+      // Phase check: not in remainder cell means in particle (or nested
+      // universe inside particle)
+      bool in_particle =
+        (p.n_coord() > i + 1 && p.coord(i + 1).cell() != media.remainder_cell_);
+      if (!in_particle) {
+        auto ctx = p.chord_context();
+        d_stoch = media.sample_matrix_chord(r, u, ctx);
+        p.chord_context() = ChordContext::SCATTER;
+        if (settings::verbosity >= 10) {
+          const char* ctx_name =
+            (ctx == ChordContext::BOUNDARY_ENTER) ? "BOUNDARY_ENTER" :
+            (ctx == ChordContext::PARTICLE_EXIT)  ? "PARTICLE_EXIT" :
+                                                   "SCATTER";
+          write_message(fmt::format(
+            "    distance_to_boundary: {} (CLS), "
+            "d_stoch={:.6f}, r=({}, {}, {})",
+            ctx_name, d_stoch, r.x, r.y, r.z),
+            1);
+        }
+      }
+    }
+
+    // 4. Three-way competition
     double& d = info.distance();
-    if (d_surf < d_lat - FP_COINCIDENT) {
+    if (d_stoch < d_surf - FP_COINCIDENT && d_stoch < d_lat - FP_COINCIDENT) {
+      // d_stoch wins -> matrix->particle crossing
+      if (d == INFINITY || (d - d_stoch) / d >= FP_REL_PRECISION) {
+        d = d_stoch;
+        info.surface() = SURFACE_NONE;
+        info.lattice_translation() = {0, 0, 0};
+        info.coord_level() = i + 1;
+        info.stochastic_boundary() = true;
+      }
+    } else if (d_surf < d_lat - FP_COINCIDENT) {
+      // d_surf wins
       if (d == INFINITY || (d - d_surf) / d >= FP_REL_PRECISION) {
-        // Update closest distance
         d = d_surf;
 
-        // If the cell is not simple, it is possible that both the negative and
-        // positive half-space were given in the region specification. Thus, we
-        // have to explicitly check which half-space the particle would be
-        // traveling into if the surface is crossed
-        if (c.is_simple() || d == INFTY) {
-          info.surface() = level_surf_cross;
-        } else {
-          Position r_hit = r + d_surf * u;
-          Surface& surf {*model::surfaces[std::abs(level_surf_cross) - 1]};
-          Direction norm = surf.normal(r_hit);
-          if (u.dot(norm) > 0) {
-            info.surface() = std::abs(level_surf_cross);
-          } else {
-            info.surface() = -std::abs(level_surf_cross);
+        // Boundary sphere detection (particle phase exit -> matrix)
+        info.stochastic_boundary() = false;
+        if (i > 0) {
+          Cell& c_above {*model::cells[p.coord(i - 1).cell()]};
+          if (c_above.type_ == Fill::STOCHASTIC_MEDIA) {
+            auto& media_above = *model::stochastic_media[c_above.fill_];
+            if (std::abs(level_surf_cross) - 1 ==
+                  media_above.boundary_surface_ &&
+                level_surf_cross > 0) {
+              info.stochastic_boundary() = true;
+              info.coord_level() = i;
+              info.surface() = SURFACE_NONE;
+              info.lattice_translation() = {0, 0, 0};
+            }
           }
         }
 
-        info.lattice_translation()[0] = 0;
-        info.lattice_translation()[1] = 0;
-        info.lattice_translation()[2] = 0;
-        info.coord_level() = i + 1;
+        if (!info.stochastic_boundary()) {
+          // Normal surface crossing (same as original code)
+          if (c.is_simple() || d == INFTY) {
+            info.surface() = level_surf_cross;
+          } else {
+            Position r_hit = r + d_surf * u;
+            Surface& surf {*model::surfaces[std::abs(level_surf_cross) - 1]};
+            Direction norm = surf.normal(r_hit);
+            info.surface() = (u.dot(norm) > 0) ? std::abs(level_surf_cross)
+                                               : -std::abs(level_surf_cross);
+          }
+          info.lattice_translation() = {0, 0, 0};
+          info.coord_level() = i + 1;
+        }
       }
     } else {
+      // d_lat wins (existing logic unchanged)
       if (d == INFINITY || (d - d_lat) / d >= FP_REL_PRECISION) {
         d = d_lat;
         info.surface() = SURFACE_NONE;
         info.lattice_translation() = level_lat_trans;
         info.coord_level() = i + 1;
+        info.stochastic_boundary() = false;
       }
     }
   }

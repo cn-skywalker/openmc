@@ -22,6 +22,7 @@
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
 #include "openmc/settings.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/xml_interface.h"
 
 namespace openmc {
@@ -335,6 +336,10 @@ void Cell::to_hdf5(hid_t cell_group) const
   } else if (type_ == Fill::LATTICE) {
     write_dataset(group, "fill_type", "lattice");
     write_dataset(group, "lattice", model::lattices[fill_]->id_);
+
+  } else if (type_ == Fill::STOCHASTIC_MEDIA) {
+    write_dataset(group, "fill_type", "stochastic");
+    write_dataset(group, "fill", model::stochastic_media[fill_]->id_);
   }
 
   close_group(group);

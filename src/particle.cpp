@@ -26,6 +26,7 @@
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/source.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/surface.h"
 #include "openmc/tallies/derivative.h"
 #include "openmc/tallies/tally.h"
@@ -231,9 +232,6 @@ void Particle::event_calculate_xs()
 
 void Particle::event_advance()
 {
-  // Find the distance to the nearest boundary
-  boundary() = distance_to_boundary(*this);
-
   // Sample a distance to collision
   if (type() == ParticleType::electron || type() == ParticleType::positron) {
     collision_distance() = material() == MATERIAL_VOID ? INFINITY : 0.0;
@@ -242,6 +240,9 @@ void Particle::event_advance()
   } else {
     collision_distance() = -std::log(prn(current_seed())) / macro_xs().total;
   }
+
+  // Find the distance to the nearest boundary
+  boundary() = distance_to_boundary(*this);
 
   double speed = this->speed();
   double time_cutoff = settings::time_cutoff[static_cast<int>(type())];
@@ -297,7 +298,12 @@ void Particle::event_cross_surface()
   surface() = boundary().surface();
   n_coord() = boundary().coord_level();
 
-  if (boundary().lattice_translation()[0] != 0 ||
+  if (boundary().stochastic_boundary()) {
+    // Stochastic media boundary crossing (matrix <-> particle)
+    bool verbose = settings::verbosity >= 10 || trace();
+    cross_stochastic_boundary(*this, boundary(), verbose);
+    event() = TallyEvent::SURFACE;
+  } else if (boundary().lattice_translation()[0] != 0 ||
       boundary().lattice_translation()[1] != 0 ||
       boundary().lattice_translation()[2] != 0) {
     // Particle crosses lattice boundary

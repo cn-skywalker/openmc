@@ -14,6 +14,7 @@
 #include "openmc/photon.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/string_utils.h"
 #include "openmc/thermal.h"
 #include "openmc/timer.h"

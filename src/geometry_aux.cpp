@@ -17,6 +17,7 @@
 #include "openmc/lattice.h"
 #include "openmc/material.h"
 #include "openmc/settings.h"
+#include "openmc/stochastic_media.h"
 #include "openmc/surface.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/filter_cell_instance.h"
@@ -27,6 +28,18 @@ namespace openmc {
 namespace model {
 std::unordered_map<int32_t, int32_t> universe_level_counts;
 } // namespace model
+
+void read_stochastic_media(pugi::xml_node root)
+{
+  for (auto node : root.children("cls_media")) {
+    auto sm = make_unique<CLSMedia>();
+    sm->from_xml(node);
+    int32_t id = sm->id_;
+    int32_t idx = model::stochastic_media.size();
+    model::stochastic_media_map[id] = idx;
+    model::stochastic_media.push_back(std::move(sm));
+  }
+}
 
 void read_geometry_xml()
 {
@@ -58,6 +71,7 @@ void read_geometry_xml(pugi::xml_node root)
   read_surfaces(root);
   read_cells(root);
   read_lattices(root);
+  read_stochastic_media(root);
 
   // Check to make sure a boundary condition was applied to at least one
   // surface
@@ -98,6 +112,12 @@ void adjust_indices()
         c->type_ = Fill::LATTICE;
         c->fill_ = search_lat->second;
       } else {
+        auto search_sm = model::stochastic_media_map.find(id);
+        if (search_sm != model::stochastic_media_map.end()) {
+          c->type_ = Fill::STOCHASTIC_MEDIA;
+          c->fill_ = search_sm->second;
+          continue;
+        }
         fatal_error(fmt::format("Specified fill {} on cell {} is neither a "
                                 "universe nor a lattice.",
           id, c->id_));
@@ -133,6 +153,11 @@ void adjust_indices()
   // Change all lattice universe values from IDs to indices.
   for (auto& l : model::lattices) {
     l->adjust_indices();
+  }
+
+  // Change stochastic media IDs to indices
+  for (auto& sm : model::stochastic_media) {
+    sm->adjust_indices();
   }
 }
 
@@ -277,6 +302,11 @@ void finalize_geometry()
 
   // Determine number of nested coordinate levels in the geometry
   model::n_coord_levels = maximum_levels(model::root_universe);
+
+  // Initialize stochastic media (after adjust_indices so IDs are converted)
+  for (auto& sm : model::stochastic_media) {
+    sm->initialize();
+  }
 }
 
 //==============================================================================
@@ -297,6 +327,11 @@ int32_t find_root_universe()
     if (lat->outer_ != NO_OUTER_UNIVERSE) {
       fill_univ_ids.insert(lat->outer_);
     }
+  }
+
+  // Also exclude particle universes from stochastic media
+  for (const auto& sm : model::stochastic_media) {
+    fill_univ_ids.insert(sm->particle_universe_);
   }
 
   // Figure out which universe is not in the set.  This is the root universe.
@@ -440,6 +475,12 @@ void prepare_distribcell(const std::vector<int32_t>* user_distribcells)
           c.offset_[map] = offset;
           Lattice& lat = *model::lattices[c.fill_];
           offset += lat.fill_offset_table(target_univ_id, map, univ_count_memo);
+        } else if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+          c.offset_[map] = offset;
+          auto& media = *model::stochastic_media[c.fill_];
+          int32_t search_univ = media.particle_universe_;
+          offset += count_universe_instances(
+            search_univ, target_univ_id, univ_count_memo);
         }
       }
     }
@@ -489,6 +530,11 @@ int count_universe_instances(int32_t search_univ, int32_t target_univ_id,
         count +=
           count_universe_instances(next_univ, target_univ_id, univ_count_memo);
       }
+    } else if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+      auto& media = *model::stochastic_media[c.fill_];
+      int32_t next_univ = media.particle_universe_;
+      count +=
+        count_universe_instances(next_univ, target_univ_id, univ_count_memo);
     }
   }
 
@@ -560,6 +606,13 @@ std::string distribcell_path_inner(int32_t target_cell, int32_t map,
     path << distribcell_path_inner(
       target_cell, map, target_offset, *model::universes[c.fill_], offset);
     return path.str();
+  } else if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+    offset += c.offset_[map];
+    auto& media = *model::stochastic_media[c.fill_];
+    path << distribcell_path_inner(
+      target_cell, map, target_offset,
+      *model::universes[media.particle_universe_], offset);
+    return path.str();
   } else {
     // Recurse into the lattice cell.
     Lattice& lat = *model::lattices[c.fill_];
@@ -609,6 +662,10 @@ int maximum_levels(int32_t univ)
         int32_t next_univ = *it;
         levels_below = std::max(levels_below, maximum_levels(next_univ));
       }
+    } else if (c.type_ == Fill::STOCHASTIC_MEDIA) {
+      auto& media = *model::stochastic_media[c.fill_];
+      levels_below = std::max(levels_below,
+        maximum_levels(media.particle_universe_));
     }
   }
 
@@ -636,6 +693,9 @@ void free_memory_geometry()
   model::lattice_map.clear();
 
   model::overlap_check_count.clear();
+
+  model::stochastic_media.clear();
+  model::stochastic_media_map.clear();
 }
 
 } // namespace openmc

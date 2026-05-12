@@ -2,6 +2,7 @@
 #define OPENMC_PARTICLE_DATA_H
 
 #include "openmc/array.h"
+#include "openmc/chord_context.h"
 #include "openmc/constants.h"
 #include "openmc/position.h"
 #include "openmc/random_lcg.h"
@@ -238,6 +239,7 @@ public:
     surface_ = SURFACE_NONE;
     coord_level_ = 0;
     lattice_translation_ = {0, 0, 0};
+    stochastic_boundary_ = false;
   }
   double& distance() { return distance_; }
   const double& distance() const { return distance_; }
@@ -254,6 +256,10 @@ public:
     return lattice_translation_;
   }
 
+  // Stochastic boundary crossing flag
+  bool& stochastic_boundary() { return stochastic_boundary_; }
+  const bool& stochastic_boundary() const { return stochastic_boundary_; }
+
   // TODO: off-by-one
   int surface_index() const { return std::abs(surface()) - 1; }
 
@@ -265,6 +271,7 @@ private:
   int coord_level_ {0}; //!< coordinate level after crossing boundary
   array<int, 3> lattice_translation_ {
     0, 0, 0}; //!< which way lattice indices will change
+  bool stochastic_boundary_ {false}; //!< true indicates stochastic boundary crossing
 };
 
 /*
@@ -296,6 +303,7 @@ public:
       cell = C_NONE;
     }
     n_coord_last_ = 1;
+    chord_context_ = ChordContext::SCATTER;
   }
 
   //! moves the particle by the specified distance to its next location
@@ -392,6 +400,13 @@ public:
   // Boundary information
   BoundaryInfo& boundary() { return boundary_; }
 
+  // Chord context tracking
+  ChordContext& chord_context() { return chord_context_; }
+  const ChordContext& chord_context() const { return chord_context_; }
+
+  // Distance to the next collision
+  double& collision_distance() { return collision_distance_; }
+
 #ifdef OPENMC_DAGMC_ENABLED
   // DagMC state variables
   moab::DagMC::RayHistory& history() { return history_; }
@@ -436,6 +451,8 @@ private:
 
   BoundaryInfo boundary_; //!< Info about the next intersection
 
+  ChordContext chord_context_ {ChordContext::SCATTER}; //!< chord context tracking
+
   int material_ {-1};      //!< index for current material
   int material_last_ {-1}; //!< index for last material
 
@@ -444,6 +461,8 @@ private:
 
   double density_mult_ {1.0};      //!< density multiplier
   double density_mult_last_ {1.0}; //!< last density multiplier
+
+  double collision_distance_ {INFTY};
 
 #ifdef OPENMC_DAGMC_ENABLED
   moab::DagMC::RayHistory history_;
@@ -555,8 +574,6 @@ private:
   double keff_tally_leakage_ {0.0};
 
   bool trace_ {false};
-
-  double collision_distance_;
 
   int n_event_ {0};
 
@@ -723,9 +740,6 @@ public:
 
   // Shows debug info
   bool& trace() { return trace_; }
-
-  // Distance to the next collision
-  double& collision_distance() { return collision_distance_; }
 
   // Number of events particle has undergone
   int& n_event() { return n_event_; }
