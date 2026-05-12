@@ -159,6 +159,8 @@ class Summary:
                 fill_id = group['material'][()]
             elif fill_type == 'universe':
                 fill_id = group['fill'][()]
+            elif fill_type == 'stochastic':
+                fill_id = group['fill'][()]
             else:
                 fill_id = group['lattice'][()]
 
@@ -227,6 +229,10 @@ class Summary:
             elif fill_type == 'universe':
                 fill = self._fast_universes[fill_id]
                 fill_univ_ids.add(fill_id)
+            elif fill_type == 'stochastic':
+                # Stochastic media fills are not reconstructable from HDF5;
+                # skip fill assignment for these cells.
+                continue
             else:
                 fill = self._fast_lattices[fill_id]
                 for idx in fill._natural_indices:

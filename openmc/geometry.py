@@ -134,6 +134,12 @@ class Geometry:
         element = ET.Element("geometry")
         self.root_universe.create_xml_subelement(element)
 
+        # Export particle universes from stochastic media (not in root universe)
+        memo = set()
+        for cell in self.root_universe.get_all_cells().values():
+            if cell.fill_type == 'stochastic':
+                cell.fill.export_particle_universe(element, memo)
+
         # Sort the elements in the file
         element[:] = sorted(element, key=lambda x: (
             x.tag, int(x.get('id'))))

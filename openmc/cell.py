@@ -27,7 +27,7 @@ class Cell(IDManagerMixin):
         automatically be assigned.
     name : str, optional
         Name of the cell. If not specified, the name is the empty string.
-    fill : openmc.Material or openmc.UniverseBase or openmc.Lattice or None or iterable of openmc.Material, optional
+    fill : openmc.Material or openmc.UniverseBase or openmc.Lattice or openmc.StochasticMedia or None or iterable of openmc.Material, optional
         Indicates what the region of space is filled with
     region : openmc.Region, optional
         Region of space that is assigned to the cell.
@@ -42,7 +42,7 @@ class Cell(IDManagerMixin):
         Indicates what the region of space is filled with. If None, the cell is
         treated as a void. An iterable of materials is used to fill repeated
         instances of a cell with different materials.
-    fill_type : {'material', 'universe', 'lattice', 'distribmat', 'void'}
+    fill_type : {'material', 'universe', 'lattice', 'stochastic', 'distribmat', 'void'}
         Indicates what the cell is filled with.
     region : openmc.Region or None
         Region of space that is assigned to the cell.
@@ -177,7 +177,8 @@ class Cell(IDManagerMixin):
                         cv.check_type('cell.fill[i]', f, openmc.Material)
 
             elif not isinstance(fill, (openmc.Material, openmc.Lattice,
-                                       openmc.UniverseBase)):
+                                       openmc.UniverseBase,
+                                       openmc.StochasticMedia)):
                 msg = (f'Unable to set Cell ID="{self._id}" to use a '
                        f'non-Material or Universe fill "{fill}"')
                 raise ValueError(msg)
@@ -195,6 +196,8 @@ class Cell(IDManagerMixin):
             return 'universe'
         elif isinstance(self.fill, openmc.Lattice):
             return 'lattice'
+        elif isinstance(self.fill, openmc.StochasticMedia):
+            return 'stochastic'
         elif isinstance(self.fill, Iterable):
             return 'distribmat'
         else:
@@ -642,6 +645,10 @@ class Cell(IDManagerMixin):
         elif self.fill_type in ('universe', 'lattice'):
             element.set("fill", str(self.fill.id))
             self.fill.create_xml_subelement(xml_element, memo)
+
+        elif self.fill_type == 'stochastic':
+            element.set("fill", str(self.fill.id))
+            xml_element.append(self.fill.to_xml_element())
 
         if self.region is not None:
             # Set the region attribute with the region specification
